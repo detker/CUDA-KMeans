@@ -1,14 +1,15 @@
 #pragma once
+
+#include <stdio.h>
+#include <cstdlib>
 #include <cuda_runtime.h>
 #include <float.h>
 
-#define ERR(source) (perror(source), fprintf(stderr, "%s:%d\n", __FILE__, __LINE__), exit(EXIT_FAILURE))
-#define CUDA_CHECK(call) do {                                                                 \
-    cudaError_t e = (call);                                                                   \
-    if (e != cudaSuccess) {                                                                   \
-        fprintf(stderr, "CUDA error %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(e)); \
-        exit(1);                                                                              \
-    } } while(0)
+#include "viz.cuh"
+#include "error_utils.h"
+#include "timer.h"
+
+
 #define MAX_ITERATIONS 100
 
 __device__ __constant__ double DEVICE_INF = DBL_MAX;
@@ -23,4 +24,4 @@ __global__ void compute_delta(const unsigned int* assignmentsChanged, int N, uns
 
 extern "C"
 void kmeans_host(const double* datapoints, double* centroids,
-    int N, int K, int D, int* assignments);
+    int N, int K, int D, int* assignments, TimerManager &tm);

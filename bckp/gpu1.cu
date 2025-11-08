@@ -1,5 +1,3 @@
-#include <stdio.h>
-#include <cstdlib>
 #include "gpu1.cuh"
 
 
@@ -118,8 +116,11 @@ __global__ void compute_delta(const unsigned int* assignmentsChanged, int N, uns
 
 extern "C"
 void kmeans_host(const double* datapoints, double* centroids,
-    int N, int K, int D, int* assignments)
+    int N, int K, int D, int* assignments, TimerManager &tm)
 {
+    TimerGPU timerGPU;
+    tm.SetTimer(&timerGPU);
+
     const double* deviceDatapoints;
     double* deviceCentroids;
     int* deviceAssignments;
@@ -154,7 +155,7 @@ void kmeans_host(const double* datapoints, double* centroids,
     }
 
     // Initialize assignments
-    CUDA_CHECK(cudaMemset((void*)deviceAssignments, -1, assignmentsSize));
+    CUDA_CHECK(cudaMemset((void*)deviceAssignments, 0, assignmentsSize));
 
     unsigned delta = N;
 
@@ -175,8 +176,10 @@ void kmeans_host(const double* datapoints, double* centroids,
         CUDA_CHECK(cudaMemcpy((void*)deviceCentroids, (const void*)centroids, centroidsSize, cudaMemcpyHostToDevice));
         // memset((void*)clustersSizes, 0, clustersSizesSize);
 
+        tm.Start();
         compute_clusters << <blocksPerGrid, threadsPerBlock, sharedMemSize >> > (deviceDatapoints, deviceCentroids,
             N, K, D, deviceAssignments, deviceAssignmentsChanged);
+        tm.Stop();
         CUDA_CHECK(cudaDeviceSynchronize());
         CUDA_CHECK(cudaGetLastError());
 
@@ -187,7 +190,9 @@ void kmeans_host(const double* datapoints, double* centroids,
         CUDA_CHECK(cudaMalloc((void**)&deviceDelta, sizeof(unsigned int)));
         CUDA_CHECK(cudaMemcpy((void*)deviceDelta, (const void*)&delta, sizeof(unsigned int), cudaMemcpyHostToDevice));
 
+        tm.Start();
         compute_delta << <blocksPerGridDelta, threadsPerBlockDelta, sharedMemSizeDelta >> > (deviceAssignmentsChanged, blocksPerGrid, deviceDelta);
+        tm.Stop();
         CUDA_CHECK(cudaDeviceSynchronize());
         CUDA_CHECK(cudaGetLastError());
 
@@ -224,7 +229,12 @@ void kmeans_host(const double* datapoints, double* centroids,
             }
             clustersSizes[k] = 0;
         }
+
+        printf("Iteration: %d, changes: %d\n", iter, delta);
+
     }
+
+    if(D == 3) render(datapoints, deviceDatapoints, deviceAssignments, N, K);
 
     // CUDA_CHECK(cudaMemcpy((void*)assignments, (const void*)deviceAssignments, assignmentsSize, cudaMemcpyDeviceToHost));
     //CUDA_CHECK(cudaMemcpy((void*)centroids, (const void*)deviceCentroids, centroidsSize, cudaMemcpyDeviceToHost));
