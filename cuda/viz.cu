@@ -22,79 +22,72 @@ __global__ void fillVBOKernel(const double* points, int* assignments, int N, int
     outCol[idx * (D_VIZ + 1) + 0] = r;
     outCol[idx * (D_VIZ + 1) + 1] = g;
     outCol[idx * (D_VIZ + 1) + 2] = b;
-    outCol[idx * (D_VIZ + 1) + 3] = 255; // alpha
+    outCol[idx * (D_VIZ + 1) + 3] = 255; 
 }
 
-// multiply two Mat4's A * B and return result (column-major math)
 static Mat4 multiply(const Mat4& A, const Mat4& B) {
-    Mat4 R;                                          // result matrix
-    for (int r = 0;r < 4;r++) {                           // for each row
-        for (int c = 0;c < 4;c++) {                       // for each column
-            float v = 0.0f;                            // accumulator
-            for (int k = 0;k < 4;k++) v += A.m[k * 4 + r] * B.m[c * 4 + k]; // compute dot product (column-major)
-            R.m[c * 4 + r] = v;                       // store result
+    Mat4 R;
+    for (int r = 0;r < 4;r++) {
+        for (int c = 0;c < 4;c++) {
+            float v = 0.0f;
+            for (int k = 0;k < 4;k++) v += A.m[k * 4 + r] * B.m[c * 4 + k];
+            R.m[c * 4 + r] = v; 
         }
     }
-    return R;                                       // return multiplied matrix
+    return R;
 }
 
-// construct a perspective projection matrix using fovy radians and aspect ratio
 static Mat4 perspective(float fovy, float aspect, float zn, float zf) {
-    float f = 1.0f / tanf(fovy * 0.5f);             // focal factor
-    Mat4 M;                                         // result matrix
-    M.m[0] = f / aspect;                             // fx
-    M.m[5] = f;                                      // fy
-    M.m[10] = (zf + zn) / (zn - zf);                 // z scaling for depth
-    M.m[11] = -1.0f;                                 // perspective division element
-    M.m[14] = (2.0f * zf * zn) / (zn - zf);          // z translation term
-    return M;                                       // return projection matrix
+    float f = 1.0f / tanf(fovy * 0.5f);
+    Mat4 M;
+    M.m[0] = f / aspect; 
+    M.m[5] = f;
+    M.m[10] = (zf + zn) / (zn - zf);
+    M.m[11] = -1.0f;
+    M.m[14] = (2.0f * zf * zn) / (zn - zf);
+    return M;
 }
 
-// translation matrix by (x,y,z)
 static Mat4 translate(float x, float y, float z) {
-    Mat4 M = Mat4::identity();                      // start with identity
-    M.m[12] = x;                                    // set translation x (column-major index 12)
-    M.m[13] = y;                                    // translation y
-    M.m[14] = z;                                    // translation z
-    return M;                                       // return translation matrix
+    Mat4 M = Mat4::identity(); 
+    M.m[12] = x;  
+    M.m[13] = y;  
+    M.m[14] = z;  
+    return M; 
 }
 
-// rotation around X axis by angle a (radians)
 static Mat4 rotateX(float a) {
-    Mat4 M = Mat4::identity();                      // identity
-    float c = cosf(a), s = sinf(a);                 // compute cos/sin
-    M.m[5] = c; M.m[9] = -s;                        // set rotation elements (column-major)
-    M.m[6] = s; M.m[10] = c;                        // set rotation elements
-    return M;                                       // return rotation matrix
+    Mat4 M = Mat4::identity();
+    float c = cosf(a), s = sinf(a);
+    M.m[5] = c; M.m[9] = -s;
+    M.m[6] = s; M.m[10] = c;
+    return M; 
 }
 
-// rotation around Y axis by angle a (radians)
 static Mat4 rotateY(float a) {
-    Mat4 M = Mat4::identity();                      // identity
-    float c = cosf(a), s = sinf(a);                 // cos/sin
-    M.m[0] = c; M.m[8] = s;                         // set elements
-    M.m[2] = -s; M.m[10] = c;                       // set elements
-    return M;                                       // return rotation matrix
+    Mat4 M = Mat4::identity();
+    float c = cosf(a), s = sinf(a);
+    M.m[0] = c; M.m[8] = s;
+    M.m[2] = -s; M.m[10] = c;
+    return M;
 }
 
-// uniform scale matrix by factor s
-static Mat4 scale(float s) {
-    Mat4 M = Mat4::identity();                      // identity
-    M.m[0] = M.m[5] = M.m[10] = s;                        // scale diagonal
-    return M;                                       // return scale matrix
-}
+// static Mat4 scale(float s) {
+//     Mat4 M = Mat4::identity();
+//     M.m[0] = M.m[5] = M.m[10] = s;
+//     return M;
+// }
 
 // ---------------------------- GLSL shader sources ----------------------------
 
 // vertex shader for points: takes position (vec3) and color (vec4), applies MVP and sets point size
 const char* vs_src =
-"#version 330 core\n"                                 // GLSL version
-"layout(location=0) in vec3 position;\n"              // input attribute 0 = position
-"layout(location=1) in vec4 colorIn;\n"               // input attribute 1 = color (RGBA)
-"out vec4 vColor;\n"                                  // out variable to fragment shader
-"uniform mat4 MVP;\n"                                 // uniform Model-View-Projection matrix
+"#version 330 core\n"                                
+"layout(location=0) in vec3 position;\n"             
+"layout(location=1) in vec4 colorIn;\n"               
+"out vec4 vColor;\n"                                
+"uniform mat4 MVP;\n"
 "void main(){ gl_Position = MVP * vec4(position,1.0); vColor = colorIn / 255.0; gl_PointSize = 3.0; }\n";
-// note: colorIn is bytes packed into normalized attribute; dividing by 255 converts to [0,1]
 
 // fragment shader for points: output interpolated color
 const char* fs_src =
@@ -254,14 +247,14 @@ int render(const double* points, const double* d_points, int* d_assignments, int
             -1,-1,-1,  -1,-1,+1,  +1,-1,-1,  +1,-1,+1,
             +1,+1,-1,  +1,+1,+1,  -1,+1,-1,  -1,+1,+1
         }; // 24 vertices total, each triple is a vertex coordinate
-        glGenVertexArrays(1, &vaoLines);                  // create VAO for line geometry
-        glGenBuffers(1, &vboLines);                       // create VBO for cube lines
-        glBindVertexArray(vaoLines);                      // bind line VAO
-        glBindBuffer(GL_ARRAY_BUFFER, vboLines);          // bind line VBO
-        glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVerts), cubeVerts, GL_STATIC_DRAW); // upload cube verts
-        glEnableVertexAttribArray(0);                     // enable attribute 0 (reused for lines)
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0); // layout: vec3 position
-        glBindVertexArray(0);                             // unbind VAO
+        glGenVertexArrays(1, &vaoLines);                  
+        glGenBuffers(1, &vboLines);                      
+        glBindVertexArray(vaoLines);                      
+        glBindBuffer(GL_ARRAY_BUFFER, vboLines);         
+        glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVerts), cubeVerts, GL_STATIC_DRAW); 
+        glEnableVertexAttribArray(0);                    
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+        glBindVertexArray(0); 
     }
 
     cudaGraphicsResource* cudaPosRes = nullptr, * cudaColRes = nullptr;

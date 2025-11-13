@@ -43,8 +43,8 @@ void load_bin_data(Dataset* dataset, const char* filename)
         ERR("fread header failed.");
     }
 
-    // dataset->D = 3;
-    // dataset->K = 10;
+    dataset->D = 3;
+    dataset->K = 10;
 
 	//dataset->datapoints.resize(dataset->N * dataset->D);
 

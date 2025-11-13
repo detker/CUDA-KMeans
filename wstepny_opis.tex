@@ -1,0 +1,545 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[polish]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+% Ustawienia dla kodu
+\lstset{
+    language=C++,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!60!black},
+    stringstyle=\color{red},
+    showstringspaces=false,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny\color{gray}
+}
+
+\title{Dokumentacja wstępna projektu:\\Implementacja algorytmu K-means w CUDA}
+\author{}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Wprowadzenie}
+
+Celem projektu jest implementacja algorytmu grupowania K-means z wykorzystaniem platformy CUDA (Compute Unified Device Architecture) firmy NVIDIA. Projekt zakłada stworzenie wydajnej, równoległej wersji algorytmu, która będzie wykorzystywać moc obliczeniową nowoczesnych kart graficznych do przyspieszenia obliczeń na dużych zbiorach danych.
+
+\subsection{Algorytm K-means}
+
+Algorytm K-means jest jedną z najpopularniejszych metod grupowania (clustering) w uczeniu maszynowym. Jego zadaniem jest podział $N$ punktów danych o wymiarowości $D$ na $K$ rozłącznych grup (klastrów), minimalizując wariancję wewnątrz każdej grupy.
+
+Algorytm działa iteracyjnie:
+\begin{enumerate}
+    \item \textbf{Inicjalizacja:} Wybór $K$ początkowych centroidów (środków klastrów)
+    \item \textbf{Przypisanie:} Każdy punkt jest przypisywany do najbliższego centroidu (według odległości euklidesowej)
+    \item \textbf{Aktualizacja:} Centroidy są przeliczane jako średnie arytmetyczne punktów przypisanych do każdego klastra
+    \item \textbf{Iteracja:} Kroki 2-3 są powtarzane, aż do momentu zbieżności (brak zmian w przypisaniach) lub osiągnięcia maksymalnej liczby iteracji
+\end{enumerate}
+
+\section{Architektura projektu}
+
+\subsection{Struktura katalogów}
+
+Projekt składa się z następujących głównych komponentów:
+
+\begin{itemize}
+    \item \textbf{cuda/} -- implementacje kerneli CUDA
+    \begin{itemize}
+        \item \texttt{gpu1.cu/gpu1.cuh} -- pierwsza implementacja (niestandardowe kernele)
+        \item \texttt{gpu2.cu/gpu2.cuh} -- druga implementacja (biblioteka Thrust)
+        \item \texttt{viz.cu/viz.cuh} -- wizualizacja 3D z OpenGL
+    \end{itemize}
+    \item \textbf{src/} -- kod hostujący (CPU)
+    \begin{itemize}
+        \item \texttt{main.cpp} -- główna funkcja programu
+        \item \texttt{utils.cpp/utils.h} -- narzędzia do I/O i parsowania argumentów
+    \end{itemize}
+    \item \textbf{include/} -- pliki nagłówkowe wspólne
+    \begin{itemize}
+        \item \texttt{error\_utils.h} -- makra do obsługi błędów CUDA
+        \item \texttt{timer.h} -- pomiar czasu wykonania
+    \end{itemize}
+\end{itemize}
+
+\subsection{Format danych}
+
+Program obsługuje dwa formaty danych wejściowych:
+\begin{itemize}
+    \item \textbf{Tekstowy (txt):} Format czytelny dla człowieka, pierwsza linia zawiera $N$, $D$, $K$, następnie dane punktów
+    \item \textbf{Binarny (bin):} Format zoptymalizowany pod kątem szybkości wczytywania
+\end{itemize}
+
+\section{Implementacja GPU1 -- Podejście niestandardowe}
+
+\subsection{Cel i założenia}
+
+Implementacja \texttt{gpu1.cu} ma na celu stworzenie w pełni równoległej wersji algorytmu K-means wykorzystującej własne kernele CUDA. Głównym założeniem jest maksymalne wykorzystanie możliwości architektury GPU poprzez:
+\begin{itemize}
+    \item Równoległe przetwarzanie wszystkich punktów danych
+    \item Wykorzystanie pamięci współdzielonej (shared memory) do optymalizacji dostępu do danych
+    \item Minimalizację transferów danych między hostem a urządzeniem
+    \item Implementację wydajnych operacji redukcji
+\end{itemize}
+
+\subsection{Struktura implementacji}
+
+\subsubsection{Funkcja główna: \texttt{kmeans\_host()}}
+
+Funkcja \texttt{kmeans\_host()} jest punktem wejścia do implementacji GPU1. Odpowiada za:
+\begin{itemize}
+    \item Alokację pamięci na GPU
+    \item Inicjalizację centroidów (pierwsze $K$ punktów ze zbioru danych)
+    \item Zarządzanie iteracjami algorytmu
+    \item Synchronizację danych między CPU a GPU
+    \item Pomiar czasu wykonania poszczególnych etapów
+\end{itemize}
+
+Parametry funkcji:
+\begin{lstlisting}
+void kmeans_host(
+    const double* datapoints,  // punkty danych (host)
+    double* centroids,         // centroidy (host)
+    int N,                     // liczba punktów
+    int K,                     // liczba klastrów
+    int D,                     // wymiarowość
+    int* assignments,          // przypisania (host)
+    TimerManager *tm           // menedżer czasu
+);
+\end{lstlisting}
+
+\subsubsection{Kernel 1: \texttt{compute\_clusters()}}
+
+Najbardziej krytyczny kernel w implementacji. Jego zadania:
+
+\textbf{Cel:} Dla każdego punktu danych znaleźć najbliższy centroid i zaktualizować przypisania.
+
+\textbf{Algorytm:}
+\begin{enumerate}
+    \item Każdy wątek obsługuje jeden punkt danych ($idx = blockIdx.x \times blockDim.x + threadIdx.x$)
+    \item Wczytanie aktualnych centroidów do pamięci współdzielonej:
+    \begin{lstlisting}
+if (threadIdx.x < K) {
+    for (int d = 0; d < D; ++d) {
+        clusters[threadIdx.x * D + d] = 
+            newClusters[threadIdx.x * D + d] / 
+            (clustersSizes[threadIdx.x] > 0 ? 
+             clustersSizes[threadIdx.x] : 1);
+    }
+}
+    \end{lstlisting}
+    \item Obliczenie odległości od wszystkich centroidów (w pętli po $K$):
+    \begin{lstlisting}
+for (int k = 0; k < K; k++) {
+    double distance;
+    compute_distance_l2(&datapoints[idx * D], 
+                        &clusters[k * D], 
+                        D, 
+                        &distance);
+    if (distance < minDistance) {
+        minDistance = distance;
+        bestCluster = k;
+    }
+}
+    \end{lstlisting}
+    \item Wykrycie zmiany przypisania:
+    \begin{lstlisting}
+if (assignments[idx] != bestCluster) {
+    assignments[idx] = bestCluster;
+    changedFlag[threadIdx.x] = 1;
+}
+    \end{lstlisting}
+    \item Redukcja wewnątrz bloku (tree-based reduction) do obliczenia liczby zmian:
+    \begin{lstlisting}
+for (int i = blockDim.x / 2; i > 0; i >>= 1) {
+    if (threadIdx.x < i) {
+        changedFlag[threadIdx.x] += 
+            changedFlag[threadIdx.x + i];
+    }
+    __syncthreads();
+}
+    \end{lstlisting}
+\end{enumerate}
+
+\textbf{Pamięć współdzielona:}
+\begin{itemize}
+    \item \texttt{changedFlag[blockDim.x]} -- flagi zmian dla każdego wątku
+    \item \texttt{clusters[K * D]} -- kopia centroidów dla bloku
+    \item Rozmiar całkowity: \texttt{sizeof(unsigned char) * blockDim.x + sizeof(double) * K * D}
+\end{itemize}
+
+\textbf{Parametry uruchomienia:}
+\begin{lstlisting}
+int threadsPerBlock = 128;
+int blocksPerGrid = (N + threadsPerBlock - 1) / threadsPerBlock;
+int sharedMemSize = sizeof(unsigned char) * threadsPerBlock 
+                  + sizeof(double) * K * D;
+
+compute_clusters<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(
+    deviceDatapoints, N, K, D, 
+    deviceAssignments, deviceAssignmentsChanged, 
+    newClustersDevice, clustersSizesDevice
+);
+\end{lstlisting}
+
+\subsubsection{Kernel 2: \texttt{compute\_delta()}}
+
+\textbf{Cel:} Agregacja liczby zmian z wszystkich bloków, aby określić warunek stopu.
+
+\textbf{Algorytm:}
+\begin{enumerate}
+    \item Każdy wątek sumuje wiele elementów tablicy \texttt{assignmentsChanged[]} (grid-stride loop):
+    \begin{lstlisting}
+unsigned int sum = 0;
+for (int i = tid; i < N; i += blockDim.x) {
+    sum += assignmentsChanged[i];
+}
+shm[tid] = sum;
+    \end{lstlisting}
+    \item Redukcja wewnątrz bloku (tree-based):
+    \begin{lstlisting}
+for (int i = blockDim.x / 2; i > 0; i >>= 1) {
+    if (tid < i) {
+        shm[tid] += shm[tid + i];
+    }
+    __syncthreads();
+}
+    \end{lstlisting}
+    \item Wątek 0 zapisuje wynik do pamięci globalnej
+\end{enumerate}
+
+\textbf{Parametry uruchomienia:}
+\begin{lstlisting}
+int threadsPerBlockDelta = 512;
+int blocksPerGridDelta = 1;
+int sharedMemSizeDelta = sizeof(unsigned int) * threadsPerBlockDelta;
+
+compute_delta<<<blocksPerGridDelta, threadsPerBlockDelta, 
+                sharedMemSizeDelta>>>(
+    deviceAssignmentsChanged, blocksPerGrid, deviceDelta
+);
+\end{lstlisting}
+
+\subsubsection{Kernel 3: \texttt{scatter\_clusters()}}
+
+\textbf{Cel:} Obliczenie nowych pozycji centroidów na podstawie zaktualizowanych przypisań.
+
+\textbf{Algorytm:}
+\begin{enumerate}
+    \item Inicjalizacja pamięci współdzielonej dla sum częściowych:
+    \begin{lstlisting}
+if(threadIdx.x < K) {
+    shmSizes[threadIdx.x] = 0;
+    for (int d = 0; d < D; ++d) {
+        shmClusters[threadIdx.x * D + d] = 0.0;
+    }
+}
+    \end{lstlisting}
+    \item Akumulacja punktów do odpowiednich klastrów (używając operacji atomowych):
+    \begin{lstlisting}
+int idx = blockIdx.x * blockDim.x + threadIdx.x;
+int clusterIdx = assignments[idx];
+
+for (int d = 0; d < D; ++d) {
+    atomicAdd(&shmClusters[clusterIdx * D + d], 
+              datapoints[idx * D + d]);
+}
+atomicAdd(&shmSizes[clusterIdx], 1);
+    \end{lstlisting}
+    \item Agregacja wyników z pamięci współdzielonej do pamięci globalnej:
+    \begin{lstlisting}
+if(threadIdx.x < K) {
+    for (int d = 0; d < D; ++d) {
+        atomicAdd(&newClusters[threadIdx.x * D + d], 
+                  shmClusters[threadIdx.x * D + d]);
+    }
+    atomicAdd(&clustersSizes[threadIdx.x], 
+              shmSizes[threadIdx.x]);
+}
+    \end{lstlisting}
+\end{enumerate}
+
+\textbf{Pamięć współdzielona:}
+\begin{itemize}
+    \item \texttt{shmSizes[K]} -- liczniki punktów w klastrach
+    \item \texttt{shmClusters[K * D]} -- częściowe sumy współrzędnych
+    \item Rozmiar: \texttt{sizeof(unsigned int) * K + sizeof(double) * K * D}
+\end{itemize}
+
+\subsubsection{Funkcja pomocnicza: \texttt{compute\_distance\_l2()}}
+
+Oblicza kwadrat odległości euklidesowej między dwoma punktami:
+
+\begin{lstlisting}
+__host__ __device__ inline void compute_distance_l2(
+    const double* point1, 
+    const double* point2, 
+    int D, 
+    double* result
+) {
+    double sum = 0.0;
+    for (int i = 0; i < D; i++) {
+        double diff = point1[i] - point2[i];
+        sum += diff * diff;
+    }
+    *result = sum;
+}
+\end{lstlisting}
+
+Deklaracja jako \texttt{\_\_host\_\_ \_\_device\_\_} pozwala na użycie tej samej funkcji na CPU i GPU.
+
+\subsection{Pętla główna algorytmu}
+
+Schemat iteracyjny w \texttt{kmeans\_host()}:
+
+\begin{lstlisting}
+unsigned delta = N;
+for (int iter = 0; iter < MAX_ITERATIONS && delta > 0; iter++)
+{
+    // Krok 1: Przypisanie punktów do klastrów
+    compute_clusters<<<...>>>(deviceDatapoints, N, K, D, 
+                              deviceAssignments, 
+                              deviceAssignmentsChanged, 
+                              newClustersDevice, 
+                              clustersSizesDevice);
+    
+    // Krok 2: Obliczenie liczby zmian
+    compute_delta<<<...>>>(deviceAssignmentsChanged, 
+                           blocksPerGrid, 
+                           deviceDelta);
+    cudaMemcpy(&delta, deviceDelta, ...);
+    
+    // Krok 3: Przeliczenie centroidów
+    scatter_clusters<<<...>>>(deviceDatapoints, 
+                              deviceAssignments, 
+                              N, K, D, 
+                              newClustersDevice, 
+                              clustersSizesDevice);
+    
+    printf("Iteration: %d, changes: %d\n", iter, delta);
+}
+\end{lstlisting}
+
+\subsection{Optymalizacje}
+
+\subsubsection{Wykorzystanie pamięci współdzielonej}
+
+W kernelu \texttt{compute\_clusters()} centroidy są wczytywane do pamięci współdzielonej, co znacząco przyspiesza dostęp do nich podczas obliczania odległości. Pamięć współdzielona ma o wiele mniejszą latencję niż pamięć globalna.
+
+\subsubsection{Operacje atomowe}
+
+W kernelu \texttt{scatter\_clusters()} wykorzystywane są operacje atomowe (\texttt{atomicAdd}) do agregacji wyników. Pozwala to na równoczesną pracę wielu wątków nad tym samym klastrem bez konfliktów wyścigowych.
+
+\subsubsection{Redukcja dwupoziomowa}
+
+Obliczanie liczby zmian wykorzystuje redukcję dwupoziomową:
+\begin{enumerate}
+    \item Redukcja wewnątrz bloków w \texttt{compute\_clusters()}
+    \item Agregacja wyników z bloków w \texttt{compute\_delta()}
+\end{enumerate}
+
+\subsubsection{Minimalizacja transferów CPU-GPU}
+
+Dane są przesyłane między hostem a urządzeniem tylko wtedy, gdy jest to niezbędne:
+\begin{itemize}
+    \item Początek: przesłanie punktów danych
+    \item Każda iteracja: przesłanie wartości \texttt{delta} (4 bajty)
+    \item Koniec: pobranie wyników (centroidy i przypisania)
+\end{itemize}
+
+\section{Implementacja GPU2 -- Biblioteka Thrust}
+
+\subsection{Cel}
+
+Implementacja \texttt{gpu2.cu} wykorzystuje bibliotekę Thrust (wysokopoziomowa biblioteka C++ dla CUDA) do realizacji algorytmu K-means. Celem jest porównanie wydajności i czytelności kodu z implementacją niskopoziomową (GPU1).
+
+\subsection{Kluczowe operacje Thrust}
+
+\begin{itemize}
+    \item \texttt{thrust::transform()} -- równoległe przypisywanie punktów do klastrów
+    \item \texttt{thrust::reduce()} -- sumowanie liczby zmian
+    \item \texttt{thrust::sort\_by\_key()} -- sortowanie punktów według przypisań
+    \item \texttt{thrust::reduce\_by\_key()} -- obliczanie sum dla każdego klastra
+\end{itemize}
+
+\subsection{Funktor \texttt{AssignAndCheckChangedFunctor}}
+
+Implementuje logikę przypisania punktu do najbliższego centroidu:
+
+\begin{lstlisting}
+__host__ __device__
+thrust::tuple<int,int> operator()(int idx) const {
+    int base = idx * D;
+    int best_cluster = 0;
+    double min_distance = DBL_MAX;
+    
+    for (int k = 0; k < K; ++k) {
+        double sum = 0.0f;
+        for (int d = 0; d < D; ++d) {
+            double diff = points[base + d] - centroids[k * D + d];
+            sum += diff * diff;
+        }
+        if(sum < min_distance) {
+            min_distance = sum;
+            best_cluster = k;
+        }
+    }
+    
+    int changed = (assignments[idx] != best_cluster) ? 1 : 0;
+    return thrust::make_tuple(best_cluster, changed);
+}
+\end{lstlisting}
+
+\section{Wizualizacja 3D (viz.cu)}
+
+\subsection{Cel}
+
+Moduł wizualizacji umożliwia interaktywne oglądanie wyników klastrowania dla danych 3-wymiarowych ($D=3$). Wykorzystuje OpenGL do renderowania oraz CUDA-OpenGL interop do bezpośredniego dostępu do buforów graficznych.
+
+\subsection{Funkcjonalność}
+
+\begin{itemize}
+    \item Renderowanie punktów jako kolorowych cząstek (każdy klaster ma inny kolor)
+    \item Interaktywna kamera (obrót myszką, zoom kółkiem myszy)
+    \item Normalizacja punktów do kostki $[-1, 1]^3$
+    \item Renderowanie ramki sześcianu
+\end{itemize}
+
+\subsection{CUDA-OpenGL Interoperability}
+
+Kernel \texttt{fillVBOKernel()} wypełnia bufory OpenGL (VBO) bezpośrednio z GPU bez kopiowania danych na CPU:
+
+\begin{lstlisting}
+cudaGraphicsGLRegisterBuffer(&cudaPosRes, vboPos, ...);
+cudaGraphicsMapResources(1, &cudaPosRes, 0);
+float* d_vboPos = nullptr;
+cudaGraphicsResourceGetMappedPointer((void**)&d_vboPos, ...);
+
+fillVBOKernel<<<...>>>(d_points, d_assignments, N, K, 
+                       minx, maxx, miny, maxy, minz, maxz, 
+                       d_vboPos, d_vboCol);
+
+cudaGraphicsUnmapResources(1, &cudaPosRes, 0);
+\end{lstlisting}
+
+\section{Pomiar wydajności}
+
+\subsection{System timerów}
+
+Projekt implementuje klasę \texttt{TimerManager} do precyzyjnego pomiaru czasu wykonania:
+\begin{itemize}
+    \item \textbf{TimerCPU} -- pomiar czasu na hoście (CPU)
+    \item \textbf{TimerGPU} -- pomiar czasu operacji GPU z użyciem CUDA events
+\end{itemize}
+
+\subsection{Mierzone metryki}
+
+\begin{itemize}
+    \item Czas wczytywania danych
+    \item Czas obliczeń K-means (suma czasów wszystkich kerneli)
+    \item Czas zapisywania wyników
+    \item Całkowity czas wykonania
+\end{itemize}
+
+\section{Kompilacja i uruchomienie}
+
+\subsection{Konfiguracja CMake}
+
+Projekt wykorzystuje CMake do zarządzania procesem kompilacji:
+
+\begin{lstlisting}[language=bash]
+cmake_minimum_required(VERSION 3.18)
+project(KMeans LANGUAGES CXX CUDA)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CUDA_STANDARD 17)
+
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} 
+    --compiler-bindir=/usr/bin/g++-9 
+    --extended-lambda 
+    --expt-relaxed-constexpr")
+
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    CUDA_SEPARABLE_COMPILATION ON
+    CUDA_ARCHITECTURES "61"
+)
+\end{lstlisting}
+
+\subsection{Kompilacja}
+
+\begin{lstlisting}[language=bash]
+mkdir build
+cd build
+cmake ..
+make
+\end{lstlisting}
+
+\subsection{Uruchomienie}
+
+\begin{lstlisting}[language=bash]
+./KMeans <format> <metoda> <ścieżka_danych> <ścieżka_wyników>
+\end{lstlisting}
+
+Parametry:
+\begin{itemize}
+    \item \texttt{format}: \texttt{txt} lub \texttt{bin}
+    \item \texttt{metoda}: \texttt{gpu1}, \texttt{gpu2}, lub \texttt{cpu}
+    \item \texttt{ścieżka\_danych}: plik wejściowy z danymi
+    \item \texttt{ścieżka\_wyników}: plik wyjściowy z wynikami
+\end{itemize}
+
+Przykład:
+\begin{lstlisting}[language=bash]
+./KMeans bin gpu1 data/points_5mln_4d_5c.txt results.txt
+\end{lstlisting}
+
+\section{Wyzwania i planowane ulepszenia}
+
+\subsection{Obserwowane problemy}
+
+\begin{itemize}
+    \item Operacje atomowe w \texttt{scatter\_clusters()} mogą powodować konflikty przy dużej liczbie punktów przypisanych do tego samego klastra
+    \item Limit rozmiaru pamięci współdzielonej ogranicza wartości $K$ i $D$
+    \item Transfer wartości \texttt{delta} po każdej iteracji wprowadza niewielki narzut
+\end{itemize}
+
+\subsection{Możliwe optymalizacje}
+
+\begin{itemize}
+    \item Implementacja metody K-means++ do lepszej inicjalizacji centroidów
+    \item Wykorzystanie warp shuffle operations zamiast shared memory dla małych redukcji
+    \item Implementacja wariantu mini-batch K-means dla ekstremalnie dużych zbiorów danych
+    \item Automatyczne dostrajanie parametrów uruchomienia (liczba wątków, bloków) w zależności od rozmiaru problemu
+    \item Wykorzystanie pamięci tekstur dla read-only danych (punkty, centroidy)
+\end{itemize}
+
+\section{Podsumowanie}
+
+Projekt implementuje w pełni funkcjonalny, zrównoleglony algorytm K-means w CUDA z dwoma różnymi podejściami:
+\begin{itemize}
+    \item \textbf{GPU1:} Niskopoziomowa implementacja z wykorzystaniem własnych kerneli, pamięci współdzielonej i operacji atomowych
+    \item \textbf{GPU2:} Wysokopoziomowa implementacja wykorzystująca bibliotekę Thrust
+\end{itemize}
+
+Dodatkowo projekt oferuje:
+\begin{itemize}
+    \item Interaktywną wizualizację 3D (OpenGL + CUDA interop)
+    \item Precyzyjny pomiar wydajności
+    \item Elastyczną obsługę różnych formatów danych
+    \item Modularną architekturę umożliwiającą łatwe rozszerzanie
+\end{itemize}
+
+Implementacja GPU1 stanowi szczególnie ciekawy przykład wykorzystania zaawansowanych technik programowania CUDA, takich jak hierarchiczna redukcja, optymalne wykorzystanie pamięci współdzielonej oraz minimalizacja transferów między hostem a urządzeniem.
+
+\end{document}
