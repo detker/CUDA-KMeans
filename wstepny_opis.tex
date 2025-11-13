@@ -25,7 +25,7 @@
 }
 
 \title{Dokumentacja wstępna projektu:\\Implementacja algorytmu K-means w CUDA}
-\author{}
+\author{Wojciech Królikowski, 333245}
 \date{\today}
 
 \begin{document}
@@ -34,7 +34,7 @@
 
 \section{Wprowadzenie}
 
-Celem projektu jest implementacja algorytmu grupowania K-means z wykorzystaniem platformy CUDA (Compute Unified Device Architecture) firmy NVIDIA. Projekt zakłada stworzenie wydajnej, równoległej wersji algorytmu, która będzie wykorzystywać moc obliczeniową nowoczesnych kart graficznych do przyspieszenia obliczeń na dużych zbiorach danych.
+Celem projektu jest implementacja algorytmu grupowania K-means z wykorzystaniem platformy CUDA. Projekt zakłada stworzenie wydajnej, równoległej wersji algorytmu, która będzie wykorzystywać moc obliczeniową kart graficznych do przyspieszenia obliczeń na dużych zbiorach danych.
 
 \subsection{Algorytm K-means}
 
@@ -42,7 +42,7 @@ Algorytm K-means jest jedną z najpopularniejszych metod grupowania (clustering)
 
 Algorytm działa iteracyjnie:
 \begin{enumerate}
-    \item \textbf{Inicjalizacja:} Wybór $K$ początkowych centroidów (środków klastrów)
+    \item \textbf{Inicjalizacja:} Wybór $K$ początkowych centroidów (poniższe implementacje inicjują centroidy pierwszymi K punktami z danych)
     \item \textbf{Przypisanie:} Każdy punkt jest przypisywany do najbliższego centroidu (według odległości euklidesowej)
     \item \textbf{Aktualizacja:} Centroidy są przeliczane jako średnie arytmetyczne punktów przypisanych do każdego klastra
     \item \textbf{Iteracja:} Kroki 2-3 są powtarzane, aż do momentu zbieżności (brak zmian w przypisaniach) lub osiągnięcia maksymalnej liczby iteracji
@@ -79,9 +79,14 @@ Program obsługuje dwa formaty danych wejściowych:
 \begin{itemize}
     \item \textbf{Tekstowy (txt):} Format czytelny dla człowieka, pierwsza linia zawiera $N$, $D$, $K$, następnie dane punktów
     \item \textbf{Binarny (bin):} Format zoptymalizowany pod kątem szybkości wczytywania
-\end{itemize}
 
-\section{Implementacja GPU1 -- Podejście niestandardowe}
+\end{itemize}
+\vspace{0.3cm}
+Ponadto, zakładamy że $K, D \leq 20$ oraz $N \leq 50$mln.
+
+
+
+\section{Implementacja GPU1}
 
 \subsection{Cel i założenia}
 
@@ -111,11 +116,11 @@ Parametry funkcji:
 void kmeans_host(
     const double* datapoints,  // punkty danych (host)
     double* centroids,         // centroidy (host)
-    int N,                     // liczba punktów
-    int K,                     // liczba klastrów
-    int D,                     // wymiarowość
+    int N,                     // liczba punktow
+    int K,                     // liczba klastrow
+    int D,                     // wymiarowosc
     int* assignments,          // przypisania (host)
-    TimerManager *tm           // menedżer czasu
+    TimerManager *tm           // menedzer czasu
 );
 \end{lstlisting}
 
@@ -277,28 +282,6 @@ if(threadIdx.x < K) {
     \item Rozmiar: \texttt{sizeof(unsigned int) * K + sizeof(double) * K * D}
 \end{itemize}
 
-\subsubsection{Funkcja pomocnicza: \texttt{compute\_distance\_l2()}}
-
-Oblicza kwadrat odległości euklidesowej między dwoma punktami:
-
-\begin{lstlisting}
-__host__ __device__ inline void compute_distance_l2(
-    const double* point1, 
-    const double* point2, 
-    int D, 
-    double* result
-) {
-    double sum = 0.0;
-    for (int i = 0; i < D; i++) {
-        double diff = point1[i] - point2[i];
-        sum += diff * diff;
-    }
-    *result = sum;
-}
-\end{lstlisting}
-
-Deklaracja jako \texttt{\_\_host\_\_ \_\_device\_\_} pozwala na użycie tej samej funkcji na CPU i GPU.
-
 \subsection{Pętla główna algorytmu}
 
 Schemat iteracyjny w \texttt{kmeans\_host()}:
@@ -307,7 +290,7 @@ Schemat iteracyjny w \texttt{kmeans\_host()}:
 unsigned delta = N;
 for (int iter = 0; iter < MAX_ITERATIONS && delta > 0; iter++)
 {
-    // Krok 1: Przypisanie punktów do klastrów
+    // Krok 1: Przypisanie punktow do klastrow
     compute_clusters<<<...>>>(deviceDatapoints, N, K, D, 
                               deviceAssignments, 
                               deviceAssignmentsChanged, 
@@ -320,7 +303,7 @@ for (int iter = 0; iter < MAX_ITERATIONS && delta > 0; iter++)
                            deviceDelta);
     cudaMemcpy(&delta, deviceDelta, ...);
     
-    // Krok 3: Przeliczenie centroidów
+    // Krok 3: Scatter centroidow
     scatter_clusters<<<...>>>(deviceDatapoints, 
                               deviceAssignments, 
                               N, K, D, 
@@ -339,7 +322,7 @@ W kernelu \texttt{compute\_clusters()} centroidy są wczytywane do pamięci wsp�
 
 \subsubsection{Operacje atomowe}
 
-W kernelu \texttt{scatter\_clusters()} wykorzystywane są operacje atomowe (\texttt{atomicAdd}) do agregacji wyników. Pozwala to na równoczesną pracę wielu wątków nad tym samym klastrem bez konfliktów wyścigowych.
+W kernelu \texttt{scatter\_clusters()} wykorzystywane są operacje atomowe (\texttt{atomicAdd}) do agregacji wyników. Pozwala to na równoczesną pracę wielu wątków nad tym samym klastrem bez konfliktów wyścigowych. Robimy je na pamięci współdzielonej, co zmniejsza latencję.
 
 \subsubsection{Redukcja dwupoziomowa}
 
@@ -362,7 +345,7 @@ Dane są przesyłane między hostem a urządzeniem tylko wtedy, gdy jest to niez
 
 \subsection{Cel}
 
-Implementacja \texttt{gpu2.cu} wykorzystuje bibliotekę Thrust (wysokopoziomowa biblioteka C++ dla CUDA) do realizacji algorytmu K-means. Celem jest porównanie wydajności i czytelności kodu z implementacją niskopoziomową (GPU1).
+Implementacja \texttt{gpu2.cu} wykorzystuje bibliotekę Thrust (wysokopoziomowa biblioteka C++ dla CUDA) do realizacji algorytmu K-means. Celem jest porównanie wydajności i czytelności kodu z implementacją \textit{GPU1}.
 
 \subsection{Kluczowe operacje Thrust}
 
@@ -373,34 +356,6 @@ Implementacja \texttt{gpu2.cu} wykorzystuje bibliotekę Thrust (wysokopoziomowa 
     \item \texttt{thrust::reduce\_by\_key()} -- obliczanie sum dla każdego klastra
 \end{itemize}
 
-\subsection{Funktor \texttt{AssignAndCheckChangedFunctor}}
-
-Implementuje logikę przypisania punktu do najbliższego centroidu:
-
-\begin{lstlisting}
-__host__ __device__
-thrust::tuple<int,int> operator()(int idx) const {
-    int base = idx * D;
-    int best_cluster = 0;
-    double min_distance = DBL_MAX;
-    
-    for (int k = 0; k < K; ++k) {
-        double sum = 0.0f;
-        for (int d = 0; d < D; ++d) {
-            double diff = points[base + d] - centroids[k * D + d];
-            sum += diff * diff;
-        }
-        if(sum < min_distance) {
-            min_distance = sum;
-            best_cluster = k;
-        }
-    }
-    
-    int changed = (assignments[idx] != best_cluster) ? 1 : 0;
-    return thrust::make_tuple(best_cluster, changed);
-}
-\end{lstlisting}
-
 \section{Wizualizacja 3D (viz.cu)}
 
 \subsection{Cel}
@@ -410,7 +365,7 @@ Moduł wizualizacji umożliwia interaktywne oglądanie wyników klastrowania dla
 \subsection{Funkcjonalność}
 
 \begin{itemize}
-    \item Renderowanie punktów jako kolorowych cząstek (każdy klaster ma inny kolor)
+    \item Renderowanie punktów jako kolorowych punktów (każdy klaster ma inny kolor)
     \item Interaktywna kamera (obrót myszką, zoom kółkiem myszy)
     \item Normalizacja punktów do kostki $[-1, 1]^3$
     \item Renderowanie ramki sześcianu
@@ -463,17 +418,44 @@ cmake_minimum_required(VERSION 3.18)
 project(KMeans LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} 
-    --compiler-bindir=/usr/bin/g++-9 
-    --extended-lambda 
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} \
+    --compiler-bindir=/usr/bin/g++-9 \
+    --extended-lambda \
     --expt-relaxed-constexpr")
+
+include_directories(
+    ${PROJECT_SOURCE_DIR}/src
+    ${PROJECT_SOURCE_DIR}/cuda
+    ${PROJECT_SOURCE_DIR}/include
+)
+
+file(GLOB_RECURSE CPP_SOURCES "${PROJECT_SOURCE_DIR}/src/*.cpp")
+file(GLOB_RECURSE CU_SOURCES  "${PROJECT_SOURCE_DIR}/cuda/*.cu")
+file(GLOB_RECURSE C_SOURCES  "${PROJECT_SOURCE_DIR}/src/*.c")
+
+file(GLOB_RECURSE HEADER_FILES "${PROJECT_SOURCE_DIR}/src/*.h" "${PROJECT_SOURCE_DIR}/include/*.h" "${PROJECT_SOURCE_DIR}/cuda/*.cuh")
+
+add_executable(${PROJECT_NAME} ${C_SOURCES} ${CPP_SOURCES} ${CU_SOURCES} ${HEADER_FILES})
+
+find_package(OpenGL REQUIRED)
+find_package(glfw3 REQUIRED)
+find_package(GLEW REQUIRED)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE
+    OpenGL::GL
+    glfw
+    GLEW::GLEW
+)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
     CUDA_SEPARABLE_COMPILATION ON
     CUDA_ARCHITECTURES "61"
 )
+
 \end{lstlisting}
 
 \subsection{Kompilacja}
@@ -488,7 +470,7 @@ make
 \subsection{Uruchomienie}
 
 \begin{lstlisting}[language=bash]
-./KMeans <format> <metoda> <ścieżka_danych> <ścieżka_wyników>
+./KMeans <format> <metoda> <sciezka_danych> <sciezka_wynikow>
 \end{lstlisting}
 
 Parametry:
@@ -510,36 +492,16 @@ Przykład:
 
 \begin{itemize}
     \item Operacje atomowe w \texttt{scatter\_clusters()} mogą powodować konflikty przy dużej liczbie punktów przypisanych do tego samego klastra
-    \item Limit rozmiaru pamięci współdzielonej ogranicza wartości $K$ i $D$
     \item Transfer wartości \texttt{delta} po każdej iteracji wprowadza niewielki narzut
 \end{itemize}
 
-\subsection{Możliwe optymalizacje}
+\subsection{Możliwe ulepszenia}
 
 \begin{itemize}
-    \item Implementacja metody K-means++ do lepszej inicjalizacji centroidów
     \item Wykorzystanie warp shuffle operations zamiast shared memory dla małych redukcji
-    \item Implementacja wariantu mini-batch K-means dla ekstremalnie dużych zbiorów danych
     \item Automatyczne dostrajanie parametrów uruchomienia (liczba wątków, bloków) w zależności od rozmiaru problemu
-    \item Wykorzystanie pamięci tekstur dla read-only danych (punkty, centroidy)
+    \item Dodanie wersji sekwencyjnej, wykonywanej na CPU 
 \end{itemize}
 
-\section{Podsumowanie}
-
-Projekt implementuje w pełni funkcjonalny, zrównoleglony algorytm K-means w CUDA z dwoma różnymi podejściami:
-\begin{itemize}
-    \item \textbf{GPU1:} Niskopoziomowa implementacja z wykorzystaniem własnych kerneli, pamięci współdzielonej i operacji atomowych
-    \item \textbf{GPU2:} Wysokopoziomowa implementacja wykorzystująca bibliotekę Thrust
-\end{itemize}
-
-Dodatkowo projekt oferuje:
-\begin{itemize}
-    \item Interaktywną wizualizację 3D (OpenGL + CUDA interop)
-    \item Precyzyjny pomiar wydajności
-    \item Elastyczną obsługę różnych formatów danych
-    \item Modularną architekturę umożliwiającą łatwe rozszerzanie
-\end{itemize}
-
-Implementacja GPU1 stanowi szczególnie ciekawy przykład wykorzystania zaawansowanych technik programowania CUDA, takich jak hierarchiczna redukcja, optymalne wykorzystanie pamięci współdzielonej oraz minimalizacja transferów między hostem a urządzeniem.
 
 \end{document}
