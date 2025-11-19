@@ -30,3 +30,6 @@ void load_bin_data(Dataset* dataset, const char* filename);
 void save_output(double** centroids, int** assignments, Dataset* dataset, char* output_path);
 
 void parse_args(int argc, char** argv, unsigned char* data_format, unsigned char* compute_method, char** data_path, char** output_path);
+
+template<typename T>
+void row_to_col_major(const T *row_major, T *col_major, int N, int D);

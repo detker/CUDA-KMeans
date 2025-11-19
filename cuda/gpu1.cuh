@@ -13,6 +13,7 @@
 #define MAX_ITERATIONS 100
 
 __host__ __device__ inline void compute_distance_l2(const double* point1, const double* point2, int D, double* result);
+__host__ __device__ inline void compute_distance_l2(const double* points, const double* clusters, int idx, int k_idx, int N, int K, int D, double* result);
 
 // __global__ void compute_clusters(const double* datapoints, const double* centroids,
 //     int N, int K, int D,

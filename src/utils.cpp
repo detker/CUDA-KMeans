@@ -43,8 +43,8 @@ void load_bin_data(Dataset* dataset, const char* filename)
         ERR("fread header failed.");
     }
 
-    dataset->D = 3;
-    dataset->K = 10;
+//    dataset->D = 3;
+//    dataset->K = 10;
 
 	//dataset->datapoints.resize(dataset->N * dataset->D);
 
@@ -112,3 +112,16 @@ void parse_args(int argc, char** argv, unsigned char* data_format, unsigned char
 
     *output_path = argv[4];
 }
+
+template<typename T>
+void row_to_col_major(const T *row_major, T *col_major, int N, int D)
+{
+    for (int n = 0; n < N; n++) {
+        for (int d = 0; d < D; d++) {
+            col_major[d * N + n] = row_major[n * D + d];
+        }
+    }
+}
+
+template void row_to_col_major<double>(const double *row_major, double *col_major, int N, int D);
+template void row_to_col_major<int>(const int *row_major, int *col_major, int N, int D);

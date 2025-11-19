@@ -3,6 +3,7 @@
 
 #include "gpu1.cuh"
 #include "gpu2.cuh"
+#include "cpu.h"
 #include "utils.h"
 #include "error_utils.h"
 #include "timer.h"
@@ -62,6 +63,7 @@ int main(int argc, char** argv)
     else // CPU
     {
         printf("Running K-means on CPU (sequential)...\n");
+        seq_kmeans(dataset.datapoints, centroids, dataset.N, dataset.K, dataset.D, assignments, &tm);
     }
     float time_computing = tm.TotalElapsedSeconds() - time_load_data;
 	printf("K-means computation time: %.4f seconds\n", time_computing);
