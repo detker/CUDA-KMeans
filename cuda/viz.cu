@@ -5,9 +5,9 @@ __global__ void fillVBOKernel(const double* points, int* assignments, int N, int
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= N) return;
-    double px = points[idx * D_VIZ + 0];
-    double py = points[idx * D_VIZ + 1];
-    double pz = points[idx * D_VIZ + 2];
+    double px = points[0*N + idx];
+    double py = points[1*N + idx];
+    double pz = points[2*N + idx];
     // Normalize point positions to [-1, 1] cube
     float nx = (maxx > minx) ? (float)((px - minx) / (maxx - minx) * 2.0 - 1.0) : 0.0f;
     float ny = (maxy > miny) ? (float)((py - miny) / (maxy - miny) * 2.0 - 1.0) : 0.0f;
@@ -165,36 +165,12 @@ void scrollCallback(GLFWwindow* window, double xoffset, double yoffset)
     if (distanceCamera > 50.0f) distanceCamera = 50.0f;
 }
 
-
-static void compute_bounds(const std::vector<double>& pts, int N, float& minx, float& maxx, float& miny, float& maxy, float& minz, float& maxz) {
-    if (pts.empty()) return;
-    minx = (float)pts[0];
-    maxx = (float)pts[0];
-    miny = (float)pts[1];
-    maxy = (float)pts[1];
-    minz = (float)pts[2];
-    maxz = (float)pts[2];
-    for (size_t i = 1;i < N;++i)
-    {
-        minx = fminf(minx, (float)pts[i * D_VIZ]); maxx = fmaxf(maxx, (float)pts[i * D_VIZ]);
-        miny = fminf(miny, (float)pts[i * D_VIZ + 1]); maxy = fmaxf(maxy, (float)pts[i * D_VIZ + 1]);
-        minz = fminf(minz, (float)pts[i * D_VIZ + 2]); maxz = fmaxf(maxz, (float)pts[i * D_VIZ + 2]);
-    }
-
-    float px = fmaxf(1e-6f, (maxx - minx) * 0.01f);
-    float py = fmaxf(1e-6f, (maxy - miny) * 0.01f);
-    float pz = fmaxf(1e-6f, (maxz - minz) * 0.01f);
-    minx -= px; maxx += px;
-    miny -= py; maxy += py;
-    minz -= pz; maxz += pz;
-}
-
-
-int render(const double* points, const double* d_points, int* d_assignments, int N, int K) {
-
-    float minx, maxx, miny, maxy, minz, maxz;
-    const std::vector<double> vec_points(points, points + N * D_VIZ);
-    compute_bounds(vec_points, N, minx, maxx, miny, maxy, minz, maxz);
+// int render(const double* points, const double* d_points, int* d_assignments, int N, int K) {
+int render(const double* d_points, int* d_assignments, int N, int K, float minx, float maxx, float miny, float maxy, float minz, float maxz)
+{
+    // float minx, maxx, miny, maxy, minz, maxz;
+    // const std::vector<double> vec_points(points, points + N * D_VIZ);
+    // compute_bounds(vec_points, N, minx, maxx, miny, maxy, minz, maxz);
 
     if (!glfwInit()) {
         ERR("Failed to innit GLFW");

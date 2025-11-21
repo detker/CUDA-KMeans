@@ -41,6 +41,7 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
 
 void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
 
-static void compute_bounds(const std::vector<double>& pts, int N, float& minx, float& maxx, float& miny, float& maxy, float& minz, float& maxz);
+// static void compute_bounds(const std::vector<double>& pts, int N, float& minx, float& maxx, float& miny, float& maxy, float& minz, float& maxz);
 
-int render(const double* points, const double* d_points, int* d_assignments, int N, int K);
+// int render(const double* points, const double* d_points, int* d_assignments, int N, int K);
+int render(const double* d_points, int* d_assignments, int N, int K, float minx, float maxx, float miny, float maxy, float minz, float maxz);

@@ -125,3 +125,25 @@ void row_to_col_major(const T *row_major, T *col_major, int N, int D)
 
 template void row_to_col_major<double>(const double *row_major, double *col_major, int N, int D);
 template void row_to_col_major<int>(const int *row_major, int *col_major, int N, int D);
+
+void compute_bounds(const double *pts, int N, float &minx, float &maxx, float &miny, float &maxy, float &minz, float &maxz)
+{
+    maxx = (float)pts[0];
+    miny = (float)pts[1];
+    maxy = (float)pts[1];
+    minz = (float)pts[2];
+    maxz = (float)pts[2];
+    for (size_t i = 1;i < N;++i)
+    {
+        minx = fminf(minx, (float)pts[i * 3]); maxx = fmaxf(maxx, (float)pts[i * 3]);
+        miny = fminf(miny, (float)pts[i * 3 + 1]); maxy = fmaxf(maxy, (float)pts[i * 3 + 1]);
+        minz = fminf(minz, (float)pts[i * 3 + 2]); maxz = fmaxf(maxz, (float)pts[i * 3 + 2]);
+    }
+
+    float px = fmaxf(1e-6f, (maxx - minx) * 0.01f);
+    float py = fmaxf(1e-6f, (maxy - miny) * 0.01f);
+    float pz = fmaxf(1e-6f, (maxz - minz) * 0.01f);
+    minx -= px; maxx += px;
+    miny -= py; maxy += py;
+    minz -= pz; maxz += pz;
+}

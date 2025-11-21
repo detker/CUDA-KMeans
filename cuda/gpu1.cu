@@ -1,18 +1,6 @@
 #include "gpu1.cuh"
-#include "utils.h"
-#include <driver_types.h>
 
 __device__ __constant__ double DEVICE_INF = DBL_MAX;
-
-__host__ __device__ inline void compute_distance_l2(const double* point1, const double* point2, int D, double* result)
-{
-    double sum = 0.0;
-    for (int i = 0; i < D; i++) {
-        double diff = point1[i] - point2[i];
-        sum += diff * diff;
-    }
-    *result = sum;
-}
 
 __host__ __device__ inline void compute_distance_l2(const double* points, const double* clusters, int idx, int k_idx, int N, int K, int D, double* result)
 {
@@ -139,11 +127,12 @@ __global__ void scatter_clusters(const double* datapoints, const int* assignment
     int N, int K, int D,
     double* newClusters, int* clustersSizes)
 {
-    extern __shared__ int shmm[];
+    extern __shared__ char shmm[];
 
     unsigned int *shmSizes = (unsigned int *)shmm;
 
-    double *shmClusters = (double*)(shmm + sizeof(unsigned int)*K);
+    size_t offset = ((sizeof(unsigned int) * K + 8 - 1) / 8) * 8; // align to double
+    double *shmClusters = (double*)(shmm + offset);
 
     if(threadIdx.x < K)
     {
@@ -170,9 +159,9 @@ __global__ void scatter_clusters(const double* datapoints, const int* assignment
     atomicAdd(&shmSizes[clusterIdx], 1);
 
 
-    __syncthreads(); // maybe put it inside if - since volta its clearly safe
     if(threadIdx.x < K)
     {
+        __syncthreads(); // maybe put it inside if - since volta its clearly safe
         for (int d = 0; d < D; ++d)
         {
             // atomicAdd(&newClusters[threadIdx.x * D + d], shmClusters[threadIdx.x * D + d]);
@@ -294,7 +283,7 @@ void kmeans_host(const double* datapoints, double* centroids,
         // int start_idx = iter == 0 ? K : 0;
         int numThreads = 128;
         int numBlocks = (N + numThreads - 1) / numThreads;
-        int sharedMemSizeScatter = sizeof(unsigned int) * K + sizeof(double) * K * D;
+        int sharedMemSizeScatter = ((sizeof(unsigned int) * K + 8 - 1) / 8) * 8 + sizeof(double) * K * D;
         // tm->SetTimer(&timerCPU);
         tm->Start();
         scatter_clusters << <numBlocks, numThreads, sharedMemSizeScatter >> > (deviceDatapoints, deviceAssignments,
@@ -308,7 +297,12 @@ void kmeans_host(const double* datapoints, double* centroids,
 
     }
 
-    // if(D == 3) render(datapoints, deviceDatapoints, deviceAssignments, N, K);
+    if (D == 3) 
+    {
+        float minx, maxx, miny, maxy, minz, maxz;
+        compute_bounds(datapoints, N, minx, maxx, miny, maxy, minz, maxz);
+        render(deviceDatapoints, deviceAssignments, N, K, minx, maxx, miny, maxy, minz, maxz);
+    }
 
     CUDA_CHECK(cudaMemcpy((void*)assignments, (const void*)deviceAssignments, assignmentsSize, cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy((void*)newClusters, (const void*)newClustersDevice, centroidsSize, cudaMemcpyDeviceToHost));

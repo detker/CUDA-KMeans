@@ -14,6 +14,7 @@
 
 #include "viz.cuh"
 #include "timer.h"
+#include "utils.h"
 
 
 #define MAX_ITERATIONS 100
