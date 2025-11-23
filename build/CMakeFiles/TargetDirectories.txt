@@ -1,3 +1,0 @@
-/home/detker/cuda/CUDA-KMeans/build/CMakeFiles/KMeans.dir
-/home/detker/cuda/CUDA-KMeans/build/CMakeFiles/edit_cache.dir
-/home/detker/cuda/CUDA-KMeans/build/CMakeFiles/rebuild_cache.dir
