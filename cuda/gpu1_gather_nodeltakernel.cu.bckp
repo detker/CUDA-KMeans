@@ -125,7 +125,8 @@ __global__ void compute_clusters(const double* datapoints, double *centroids,
 
         if(threadIdx.x == 0) // equivalent to if(threadIdx.x == 0)
         {
-            assignmentsChanged[blockIdx.x] = warpSum;
+            // assignmentsChanged[blockIdx.x] = warpSum;
+            atomicAdd(assignmentsChanged, warpSum);
         }
     }
 }
@@ -448,6 +449,7 @@ void kmeans_host(const double* datapoints, double* centroids,
     unsigned int* deviceDelta;
     CUDA_CHECK(cudaMalloc((void**)&deviceDelta, sizeof(unsigned int)));
     // CUDA_CHECK(cudaMemcpy((void*)deviceDelta, (const void*)&delta, sizeof(unsigned int), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemset((void*)deviceDelta, 0, sizeof(unsigned int)));
 
     for (int iter = 0; iter < MAX_ITERATIONS && delta > 0; iter++)
     {
@@ -456,7 +458,7 @@ void kmeans_host(const double* datapoints, double* centroids,
         
         tm->Start();
         compute_clusters << <blocksPerGrid, threadsPerBlock, sharedMemSize >> > (deviceDatapoints, deviceCentroids,
-            N, K, D, deviceAssignments, deviceAssignmentsChanged, newClustersDevice, clustersSizesDevice);
+            N, K, D, deviceAssignments, deviceDelta, newClustersDevice, clustersSizesDevice);
         tm->Stop();
         CUDA_CHECK(cudaDeviceSynchronize());
         CUDA_CHECK(cudaGetLastError());
@@ -464,16 +466,17 @@ void kmeans_host(const double* datapoints, double* centroids,
         CUDA_CHECK(cudaMemset((void*)newClustersDevice, 0, centroidsSize));
         CUDA_CHECK(cudaMemset((void*)clustersSizesDevice, 0, clustersSizesSize));
 
-        tm->Start();
-        compute_delta << <blocksPerGridDelta, threadsPerBlockDelta, sharedMemSizeDelta >> > (deviceAssignmentsChanged, blocksPerGrid, deviceDelta);
-        tm->Stop();
-        CUDA_CHECK(cudaDeviceSynchronize());
-        CUDA_CHECK(cudaGetLastError());
+        // tm->Start();
+        // compute_delta << <blocksPerGridDelta, threadsPerBlockDelta, sharedMemSizeDelta >> > (deviceAssignmentsChanged, blocksPerGrid, deviceDelta);
+        // tm->Stop();
+        // CUDA_CHECK(cudaDeviceSynchronize());
+        // CUDA_CHECK(cudaGetLastError());
 
         CUDA_CHECK(cudaMemcpy((void*)&delta, (const void*)deviceDelta, sizeof(unsigned int), cudaMemcpyDeviceToHost));
 
         // Here we should recompute centroids based on new assignments
-        CUDA_CHECK(cudaMemset((void*)deviceAssignmentsChanged, 0, sizeof(unsigned int) * blocksPerGrid));
+        // CUDA_CHECK(cudaMemset((void*)deviceAssignmentsChanged, 0, sizeof(unsigned int) * blocksPerGrid));
+        CUDA_CHECK(cudaMemset((void*)deviceDelta, 0, sizeof(unsigned int)));
         // CUDA_CHECK(cudaMemcpy((void*)assignments, (const void*)deviceAssignments, assignmentsSize, cudaMemcpyDeviceToHost));
 
         // int start_idx = iter == 0 ? K : 0;
