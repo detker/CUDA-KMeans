@@ -35,4 +35,7 @@ void parse_args(int argc, char** argv, unsigned char* data_format, unsigned char
 template<typename T>
 void row_to_col_major(const T *row_major, T *col_major, int N, int D);
 
+template<typename T>
+void col_to_row_major(const T *col_major, T *row_major, int N, int D);
+
 void compute_bounds(const double *pts, int N, float &minx, float &maxx, float &miny, float &maxy, float &minz, float &maxz);

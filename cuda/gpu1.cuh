@@ -21,6 +21,10 @@ __global__ void compute_clusters(const double* datapoints,
 
 __global__ void compute_delta(const unsigned int* assignmentsChanged, int N, unsigned int* delta);
 
+__global__ void scatter_clusters(const double* datapoints, const int* assignments,
+    int N, int K, int D,
+    double* newClusters, int* clustersSizes);
+
 extern "C"
 void kmeans_host(const double* datapoints, double* centroids,
     int N, int K, int D, int* assignments, TimerManager *tm);

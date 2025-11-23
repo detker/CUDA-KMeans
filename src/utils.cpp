@@ -126,6 +126,19 @@ void row_to_col_major(const T *row_major, T *col_major, int N, int D)
 template void row_to_col_major<double>(const double *row_major, double *col_major, int N, int D);
 template void row_to_col_major<int>(const int *row_major, int *col_major, int N, int D);
 
+template<typename T>
+void col_to_row_major(const T *col_major, T *row_major, int N, int D)
+{
+    for (int n = 0; n < N; n++) {
+        for (int d = 0; d < D; d++) {
+            row_major[n * D + d] = col_major[d * N + n];
+        }
+    }
+}
+
+template void col_to_row_major<double>(const double *col_major, double *row_major, int N, int D);
+template void col_to_row_major<int>(const int *col_major, int *row_major, int N, int D);
+
 void compute_bounds(const double *pts, int N, float &minx, float &maxx, float &miny, float &maxy, float &minz, float &maxz)
 {
     maxx = (float)pts[0];

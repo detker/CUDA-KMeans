@@ -2,6 +2,9 @@ import numpy as np
 import struct
 from pathlib import Path
 
+SEED = 42
+np.random.seed(SEED)
+
 OUT = Path("big_kmeans_datasets")
 OUT.mkdir(exist_ok=True)
 
@@ -24,6 +27,26 @@ def write_binary(filename, data, k):
 
         # Write point coordinates as float64
         f.write(data.tobytes(order="C"))
+
+    print(f"[saved] {filename} | shape=({N}, {d}), k={k}")
+
+def write_text(filename, data, k):
+    """
+    filename : output path
+    data     : numpy array (N x d), dtype float64
+    k        : number of clusters
+    """
+
+    data = data.astype(np.float64, copy=False)
+    N, d = data.shape
+
+    with open(filename, "w") as f:
+        # Write header: N, d, k
+        # f.write(f"{N} {d} {k}\n")
+
+        # Write point coordinates
+        for i, point in enumerate(data):
+            f.write(str(i+1) + " " + " ".join(map(str, point)) + "\n")
 
     print(f"[saved] {filename} | shape=({N}, {d}), k={k}")
 
@@ -87,17 +110,26 @@ def gen_highdim(N, d, k):
 # -------------------------------------------------------------------
 if __name__ == "__main__":
     # Example large dataset parameters
+    # configs = [
+    #     ("uniform_big.dat",            gen_uniform,            1_200_000, 3, 10),
+    #     ("gaussian_big.dat",           gen_gaussian_clusters,  1_000_000, 3, 8),
+    #     ("overlap_big.dat",            gen_overlapping_clusters, 900_000, 3, 8),
+    #     ("skewed_big.dat",             gen_skewed_density,     1_500_000, 3, 12),
+    #     ("highdim_big.dat",            gen_highdim,            500_000, 3, 20),
+    # ]
+
     configs = [
-        ("uniform_big.dat",            gen_uniform,            1_200_000, 3, 10),
-        ("gaussian_big.dat",           gen_gaussian_clusters,  1_000_000, 3, 8),
-        ("overlap_big.dat",            gen_overlapping_clusters, 900_000, 3, 8),
-        ("skewed_big.dat",             gen_skewed_density,     1_500_000, 3, 12),
-        ("highdim_big.dat",            gen_highdim,            500_000, 3, 20),
+        ("uniform_big.txt",            gen_uniform,            1_200_000, 3, 10),
+        ("gaussian_big.txt",           gen_gaussian_clusters,  1_000_000, 3, 8),
+        ("overlap_big.txt",            gen_overlapping_clusters, 900_000, 3, 8),
+        ("skewed_big.txt",             gen_skewed_density,     1_500_000, 3, 12),
+        ("highdim_big.txt",            gen_highdim,            500_000, 3, 20),
     ]
 
     for filename, generator, N, d, k in configs:
         print(f"\nGenerating {filename} ...")
         data = generator(N, d, k) if generator != gen_highdim or generator != gen_uniform else generator(N, d)
-        write_binary(OUT / filename, data, k)
+        write_text(OUT / filename, data, k)
+        write_binary(OUT / (filename.replace(".txt", ".dat")), data, k)
 
     print("\nAll datasets created in:", OUT.resolve())
