@@ -17,8 +17,6 @@ __host__ inline unsigned int nextPowerOfTwo(unsigned int n)
     return n;
 }
 
-
-
 __host__ __device__ inline void compute_distance_l2(const double* points, const double* clusters, int idx, int k_idx, int N, int K, int D, double* result)
 {
     double sum = 0.0;
@@ -29,6 +27,19 @@ __host__ __device__ inline void compute_distance_l2(const double* points, const 
     }
     *result = sum;
 
+}
+
+__global__ void transpose(const double* input, double* output, int N, int D)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < N)
+    {
+        #pragma unroll
+        for(int d=0; d < D; ++d)
+        {
+            output[d * N + idx] = input[idx * D + d];
+        }
+    }
 }
 
 __global__ void compute_clusters(const double* datapoints, double *centroids,
@@ -375,11 +386,12 @@ void kmeans_host(const double* datapoints, double* centroids,
     TimerGPU timerGPU;
     tm->SetTimer(&timerGPU);
 
-    double *datapoints_col_major = (double*)malloc(N * D * sizeof(double));
-    if (!datapoints_col_major) ERR("malloc datapoints_col_major failed.");
-    row_to_col_major<double>(datapoints, datapoints_col_major, N, D); // AoS -> SoA
+    // double *datapoints_col_major = (double*)malloc(N * D * sizeof(double));
+    // if (!datapoints_col_major) ERR("malloc datapoints_col_major failed.");
+    // row_to_col_major<double>(datapoints, datapoints_col_major, N, D); // AoS -> SoA
 
-    const double* deviceDatapoints;
+    const double *deviceDatapointsRowMajor;
+    const double *deviceDatapoints;
     double* deviceCentroids;
     int* deviceAssignments;
     unsigned int* deviceAssignmentsChanged;
@@ -402,13 +414,24 @@ void kmeans_host(const double* datapoints, double* centroids,
     CUDA_CHECK(cudaMalloc((void**)&newClustersDevice, centroidsSize));
     CUDA_CHECK(cudaMalloc((void**)&clustersSizesDevice, clustersSizesSize));
 
+    CUDA_CHECK(cudaMalloc((void**)&deviceDatapointsRowMajor, datapointsSize));
     CUDA_CHECK(cudaMalloc((void**)&deviceDatapoints, datapointsSize));
+
     CUDA_CHECK(cudaMalloc((void**)&deviceCentroids, centroidsSize));
     CUDA_CHECK(cudaMalloc((void**)&deviceAssignments, assignmentsSize));
 
     // first we need to initialize centroids by first K datapoints (here we should ensure K <= N!)
     // TODO: add check for K <= N or simply memset centroids to 0 beforehand
-    CUDA_CHECK(cudaMemcpy((void*)deviceDatapoints, (const void*)datapoints_col_major, datapointsSize, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy((void*)deviceDatapointsRowMajor, (const void*)datapoints, datapointsSize, cudaMemcpyHostToDevice));
+    int colMajorThreadsPerBlock = 512;
+    int colMajorBlocksPerGrid = (N + colMajorThreadsPerBlock - 1) / colMajorThreadsPerBlock;
+    transpose<<<colMajorBlocksPerGrid, colMajorThreadsPerBlock>>>(deviceDatapointsRowMajor, (double *)deviceDatapoints, N, D);
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaFree((void*)deviceDatapointsRowMajor));
+
+
+    // CUDA_CHECK(cudaMemcpy((void*)deviceDatapoints, (const void*)datapoints_col_major, datapointsSize, cudaMemcpyHostToDevice));
     // CUDA_CHECK(cudaMemcpy((void*)deviceCentroids, (const void*)datapoints, centroidsSize, cudaMemcpyHostToDevice));
 
     // AoS -> SoA
@@ -416,7 +439,7 @@ void kmeans_host(const double* datapoints, double* centroids,
     {
         for (int d = 0; d < D; ++d)
         {
-            centroids[d * K + k] = datapoints_col_major[d * N + k];
+            centroids[d * K + k] = datapoints[k * D + d];
         }
     }
 
@@ -506,12 +529,12 @@ void kmeans_host(const double* datapoints, double* centroids,
 
     }
 
-    if (D == 3) 
-    {
-        float minx, maxx, miny, maxy, minz, maxz;
-        compute_bounds(datapoints, N, minx, maxx, miny, maxy, minz, maxz);
-        render(deviceDatapoints, deviceAssignments, N, K, minx, maxx, miny, maxy, minz, maxz);
-    }
+    // if (D == 3) 
+    // {
+    //     float minx, maxx, miny, maxy, minz, maxz;
+    //     compute_bounds(datapoints, N, minx, maxx, miny, maxy, minz, maxz);
+    //     render(deviceDatapoints, deviceAssignments, N, K, minx, maxx, miny, maxy, minz, maxz);
+    // }
 
     CUDA_CHECK(cudaMemcpy((void*)assignments, (const void*)deviceAssignments, assignmentsSize, cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy((void*)newClusters, (const void*)newClustersDevice, centroidsSize, cudaMemcpyDeviceToHost));
@@ -549,7 +572,7 @@ void kmeans_host(const double* datapoints, double* centroids,
     CUDA_CHECK(cudaFree((void*)newClustersDevice));
     CUDA_CHECK(cudaFree((void*)clustersSizesDevice));
     CUDA_CHECK(cudaFree((void*)deviceDelta));
-    free(datapoints_col_major);
+    // free(datapoints_col_major);
     free(clustersSizes);
     free(newClusters);
 }
