@@ -290,7 +290,7 @@ def run_test(filename, data, k, OUT='../data/'):
     
     # Run CPU version
     print("Running CPU version...")
-    launch_mine('bin', 'cpu', OUT + filename, OUT + filename + '_output_cpu.txt')
+    launch_mine('bin', 'gpu2', OUT + filename, OUT + filename + '_output_cpu.txt')
     print('✓ KMeans CPU finished')
     
     # Compare results

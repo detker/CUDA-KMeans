@@ -31,7 +31,7 @@ __global__ void compute_clusters(const double* datapoints, double *centroids,
 
     if (threadIdx.x < K)
     {
-        #pragma unroll 4
+        #pragma unroll
         for (int d = 0; d < D; ++d)
         {
             clusters[d * K + threadIdx.x] = centroids[d*K + threadIdx.x];
@@ -54,7 +54,7 @@ __global__ void compute_clusters(const double* datapoints, double *centroids,
             // // compute_distance_l2(&datapoints[idx * D], &clusters[k * D], D, &distance);
             // compute_distance_l2(datapoints, clusters, idx, k, N, K, D, &distance);
             double sum = 0.0;
-            #pragma unroll 4
+            #pragma unroll
             for(int d=0; d < D; ++d)
             {
                 double diff = datapoints[d * N + idx] - clusters[d * K + k];
@@ -121,7 +121,7 @@ __global__ void scatter_clusters(const double* datapoints, const int* assignment
     extern __shared__ double shmm[];
     double *localSums = shmm;
     unsigned int *localSizes = (unsigned int *)(shmm + blockDim.x * D);
-    #pragma unroll 4
+    #pragma unroll
     for(int d=0; d < D; ++d)
     {
         // localSums[D*threadIdx.x + d] = 0.0;
@@ -140,7 +140,7 @@ __global__ void scatter_clusters(const double* datapoints, const int* assignment
     {
         if(assignments[idx] == k)
         {
-            #pragma unroll 4
+            #pragma unroll
             for(int d=0; d < D; ++d)
             {
                 // localSums[D*threadIdx.x + d] += datapoints[D*idx + d];
@@ -158,7 +158,7 @@ __global__ void scatter_clusters(const double* datapoints, const int* assignment
     {
         if(threadIdx.x < offset)
         {
-            #pragma unroll 4
+            #pragma unroll
             for(int d=0; d < D; ++d)
             {
                 // localSums[D*threadIdx.x + d] += localSums[D*(threadIdx.x + offset) + d];
@@ -171,7 +171,7 @@ __global__ void scatter_clusters(const double* datapoints, const int* assignment
 
     if(threadIdx.x == 0)
     {
-        #pragma unroll 4
+        #pragma unroll
         for(int d=0; d < D; ++d)
         {
             // atomicAdd(&newClusters[D*k + d], localSums[d]);
@@ -222,7 +222,7 @@ void kmeans_host(const double* datapoints, double* centroids,
     // AoS -> SoA
     for (int k = 0; k < K; ++k)
     {
-        #pragma unroll 4
+        #pragma unroll
         for (int d = 0; d < D; ++d)
         {
             // centroids[d * K + k] = datapoints[k * D + d];
@@ -311,7 +311,7 @@ void kmeans_host(const double* datapoints, double* centroids,
     // Convert from column-major (SoA) to row-major (AoS) for output
     for (int k = 0; k < K; ++k)
     {
-        #pragma unroll 4
+        #pragma unroll
         for (int d = 0; d < D; ++d)
         {
             centroids[k * D + d] = centroids_col_major[d * K + k];
@@ -330,10 +330,8 @@ void kmeans_host(const double* datapoints, double* centroids,
     free(newClusters);
 }
 
-// Type alias to reduce verbosity
 using KMeansFunc = void(const double*, double*, int, int, int*, TimerManager*);
 
-// Explicit template instantiations for dimensions 1-20
 template KMeansFunc kmeans_host<1>;
 template KMeansFunc kmeans_host<2>;
 template KMeansFunc kmeans_host<3>;

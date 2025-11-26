@@ -19,6 +19,7 @@
 
 #define MAX_ITERATIONS 100
 
-extern "C"
+// Forward declaration
+template<int D>
 void thrust_kmeans_host(const double* datapoints, double* centroids,
-    int N, int K, int D, int* assignments, TimerManager *tm);
+    int N, int K, int* assignments, TimerManager *tm);

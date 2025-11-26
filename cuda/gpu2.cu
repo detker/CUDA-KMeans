@@ -1,15 +1,14 @@
 #include "gpu2.cuh"
 
-
-typedef struct AssignAndCheckChangedFunctor
+template<int D>
+struct AssignAndCheckChangedFunctor
 {
-    int D;
     int K;
     int N;
     double* points;
     double* centroids;
     int* assignments;
-    AssignAndCheckChangedFunctor(double *points_ptr, double* centroids_ptr, int* assignments_ptr, int n, int d, int k) : points(points_ptr), centroids(centroids_ptr), assignments(assignments_ptr), N(n), D(d), K(k) {}
+    AssignAndCheckChangedFunctor(double *points_ptr, double* centroids_ptr, int* assignments_ptr, int n, int k) : points(points_ptr), centroids(centroids_ptr), assignments(assignments_ptr), N(n), K(k) {}
 
     __host__ __device__
     thrust::tuple<int,int> operator()(int idx) const
@@ -20,6 +19,7 @@ typedef struct AssignAndCheckChangedFunctor
         for (int k = 0; k < K; ++k)
         {
             double sum = 0.0f;
+            #pragma unroll 4
             for (int d = 0; d < D; ++d) {
                 // double diff = points[base + d] - centroids[k * D + d];
                 double diff = points[d * N + idx] - centroids[d * K + k];
@@ -36,12 +36,12 @@ typedef struct AssignAndCheckChangedFunctor
 
 		return thrust::make_tuple(best_cluster, changed);
     }
-} AssignAndCheckChangedFunctor;
+};
 
 
-extern "C"
+template<int D>
 void thrust_kmeans_host(const double* datapoints, double* centroids,
-    int N, int K, int D, int* assignments, TimerManager *tm)
+    int N, int K, int* assignments, TimerManager *tm)
 {
     TimerGPU timerGPU;
     tm->SetTimer(&timerGPU);
@@ -56,6 +56,7 @@ void thrust_kmeans_host(const double* datapoints, double* centroids,
     // double *dp = thrust::raw_pointer_cast(d_datapoints.data());
     for (int k = 0; k < K; ++k)
     {
+        #pragma unroll 4
         for (int d = 0; d < D; ++d)
         {
             centroids_col_major[d * K + k] = datapoints[d*N + k];
@@ -83,7 +84,7 @@ void thrust_kmeans_host(const double* datapoints, double* centroids,
         thrust::sequence(indices.begin(), indices.end());
 
         auto zip = thrust::make_zip_iterator(thrust::make_tuple(d_assignments.begin(), d_assignmentChanged.begin()));
-        AssignAndCheckChangedFunctor f(thrust::raw_pointer_cast(d_datapoints.data()), thrust::raw_pointer_cast(d_centroids.data()), thrust::raw_pointer_cast(d_assignments.data()), N, D, K);
+        AssignAndCheckChangedFunctor<D> f(thrust::raw_pointer_cast(d_datapoints.data()), thrust::raw_pointer_cast(d_centroids.data()), thrust::raw_pointer_cast(d_assignments.data()), N, K);
         tm->Start();
         thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(N), zip, f);
         tm->Stop();
@@ -103,6 +104,7 @@ void thrust_kmeans_host(const double* datapoints, double* centroids,
         double* points_ptr = thrust::raw_pointer_cast(d_datapoints.data());
         // double* newCentroids_ptr = thrust::raw_pointer_cast(newCentroids.data());
 
+        #pragma unroll 4
         for (int d = 0; d < D; ++d)
         {
 			thrust::device_vector<double> pointsAlongDim(N);
@@ -130,19 +132,18 @@ void thrust_kmeans_host(const double* datapoints, double* centroids,
 
             double* sums_ptr = thrust::raw_pointer_cast(clusterSums.data());
             int* counts_ptr = thrust::raw_pointer_cast(clusterCounts.data());
+            int* cluster_ids_ptr = thrust::raw_pointer_cast(clustersIdxs.data());
             double* centroids_ptr = thrust::raw_pointer_cast(newCentroids.data());
 
             tm->Start();
             thrust::for_each(
                 thrust::counting_iterator<int>(0),
                 thrust::counting_iterator<int>(K),
-                [=] __device__(int k) {
-                int count = counts_ptr[k];
+                [=] __device__(int idx) {
+                int k = cluster_ids_ptr[idx];
+                int count = counts_ptr[idx];
                 if (count > 0)
-                    // centroids_ptr[k * D + d] = sums_ptr[k] / (double)count;
-                    centroids_ptr[d * K + k] = sums_ptr[k] / (double)count;
-                // else
-                //     centroids_ptr[d * K + k] = 0.0;
+                    centroids_ptr[d * K + k] = sums_ptr[idx] / (double)count;
                 }
             );
             tm->Stop();
@@ -169,3 +170,28 @@ void thrust_kmeans_host(const double* datapoints, double* centroids,
     // free(datapoints_col_major);
     free(centroids_col_major);
 }
+
+// Type alias to reduce verbosity
+using KMeansFunc = void(const double*, double*, int, int, int*, TimerManager*);
+
+// Explicit template instantiations for dimensions 1-20
+template KMeansFunc thrust_kmeans_host<1>;
+template KMeansFunc thrust_kmeans_host<2>;
+template KMeansFunc thrust_kmeans_host<3>;
+template KMeansFunc thrust_kmeans_host<4>;
+template KMeansFunc thrust_kmeans_host<5>;
+template KMeansFunc thrust_kmeans_host<6>;
+template KMeansFunc thrust_kmeans_host<7>;
+template KMeansFunc thrust_kmeans_host<8>;
+template KMeansFunc thrust_kmeans_host<9>;
+template KMeansFunc thrust_kmeans_host<10>;
+template KMeansFunc thrust_kmeans_host<11>;
+template KMeansFunc thrust_kmeans_host<12>;
+template KMeansFunc thrust_kmeans_host<13>;
+template KMeansFunc thrust_kmeans_host<14>;
+template KMeansFunc thrust_kmeans_host<15>;
+template KMeansFunc thrust_kmeans_host<16>;
+template KMeansFunc thrust_kmeans_host<17>;
+template KMeansFunc thrust_kmeans_host<18>;
+template KMeansFunc thrust_kmeans_host<19>;
+template KMeansFunc thrust_kmeans_host<20>;

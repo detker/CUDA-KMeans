@@ -32,7 +32,7 @@ struct KMeansDispatcher
         else if (compute_method == GPU2)
         {
             printf("Running K-means on gpu2 (parallel, thrust)...\n");
-            thrust_kmeans_host(datapoints, centroids, N, K, D, assignments, tm);
+            thrust_kmeans_host<D>(datapoints, centroids, N, K, assignments, tm);
         }
         else // CPU
         {
