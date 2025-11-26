@@ -31,7 +31,57 @@ void load_txt_data(Dataset* dataset, const char* filename)
     fclose(file);
 }
 
-void load_bin_data(Dataset* dataset, const char* filename)
+void load_bin_data_gpu(Dataset* dataset, const char* filename)
+{
+    FILE* file = fopen(filename, "rb");
+    if (!file) ERR("fopen failed.");
+
+    if (fread(&dataset->N, sizeof(int), 1, file) != 1 ||
+        fread(&dataset->D, sizeof(int), 1, file) != 1 ||
+        fread(&dataset->K, sizeof(int), 1, file) != 1)
+    {
+        ERR("fread header failed.");
+    }
+
+//    dataset->D = 3;
+//    dataset->K = 10;
+
+	//dataset->datapoints.resize(dataset->N * dataset->D);
+    int blocks = (dataset->N + 1023) / 1024;
+    double *chunkBuffer = (double*)malloc(1024 * dataset->D * sizeof(double));
+    if (!chunkBuffer) ERR("malloc chunkBuffer failed.");
+
+    size_t datapointsSize = dataset->N * dataset->D * sizeof(double);
+    dataset->datapoints = (double*)malloc(datapointsSize);
+    if (!dataset->datapoints) ERR("malloc datapoints failed.");
+
+    for (int b = 0; b < blocks; ++b)
+    {
+        int pointsInThisBlock = ((b == blocks - 1) && (dataset->N % 1024 != 0)) ? (dataset->N % 1024) : 1024;
+        if (fread(chunkBuffer, sizeof(double), pointsInThisBlock * dataset->D, file) != pointsInThisBlock * dataset->D)
+        {
+            ERR("fread datapoints chunk failed.");
+        }
+        for (int i = 0; i < pointsInThisBlock; ++i)
+        {
+            for (int d = 0; d < dataset->D; ++d)
+            {
+                dataset->datapoints[d * dataset->N + (b * 1024 + i)] = chunkBuffer[i * dataset->D + d];
+                // direct SoA load
+            }
+        }
+        // memcpy(dataset->datapoints + b * 1024 * dataset->D, chunkBuffer, pointsInThisBlock * dataset->D * sizeof(double));
+    }
+
+    // if (fread(dataset->datapoints, sizeof(double), dataset->N * dataset->D, file) != dataset->N * dataset->D)
+    // {
+    //     ERR("fread datapoints failed.");
+    // }
+    free(chunkBuffer);
+    fclose(file);
+}
+
+void load_bin_data_cpu(Dataset* dataset, const char* filename)
 {
     FILE* file = fopen(filename, "rb");
     if (!file) ERR("fopen failed.");
@@ -58,6 +108,7 @@ void load_bin_data(Dataset* dataset, const char* filename)
 
     fclose(file);
 }
+
 
 void save_output(double** centroids, int** assignments, Dataset* dataset, char* output_path)
 {

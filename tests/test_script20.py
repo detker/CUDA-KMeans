@@ -4,7 +4,7 @@ import struct
 import subprocess
 import os
 
-SEED = 2137
+SEED = 42
 np.random.seed(SEED)
 
 def write_gaussian_stream(filename, N, d, k, spread=0.1, seed=42):
@@ -267,7 +267,7 @@ def compare_results(clusters_mine, assignments_mine, clusters_notmine, assignmen
     assert len(clusters_mine_sorted) == len(clusters_notmine_sorted), "Number of clusters differ"
 
     for c1, c2 in zip(clusters_mine_sorted, clusters_notmine_sorted):
-        assert np.allclose(c1, c2, atol=1e-4), f"Cluster centers differ: {c1} vs {c2}"
+        assert np.allclose(c1, c2, atol=1e-6), f"Cluster centers differ: {c1} vs {c2}"
     
     assert len(assignments_mine) == len(assignments_notmine), "Number of assignments differ"
 
@@ -356,23 +356,23 @@ if __name__ == "__main__":
         
         "large_scale": [
             # Large-scale tests (original size)
-            ("uniform_big.dat", gen_uniform, 1200000, 3, 10),
-            ("overlap_big.dat", gen_overlapping_clusters, 900000, 3, 8),
-            ("gaussian_big.dat", gen_gaussian_clusters, 1000000, 3, 8),
-            ("skewed_big.dat", gen_skewed_density, 1500000, 3, 12),
+            ("uniform_big.dat", gen_uniform, 1200000, 3, 20),
+            ("overlap_big.dat", gen_overlapping_clusters, 900000, 3, 20),
+            ("gaussian_big.dat", gen_gaussian_clusters, 1000000, 3, 20),
+            ("skewed_big.dat", gen_skewed_density, 1500000, 3, 20),
         ],
         
         "extreme": [
             # Extreme cases
             ("many_clusters.dat", gen_gaussian_clusters, 50000, 3, 20),
-            ("very_highdim.dat", gen_highdim, 10000, 20, 10),
-            ("tiny_dataset.dat", gen_uniform, 100, 2, 3),
+            ("very_highdim.dat", gen_highdim, 10000, 20, 20),
+            ("tiny_dataset.dat", gen_uniform, 100, 2, 20),
         ],
 
         # "ultra extreme": [
         #     # Ultra Extreme cases
-        #     ("many_clusters.dat", gen_gaussian_clusters, 50_000_000, 3, 8),
-        #     ("very_highdim.dat", gen_highdim, 50_000_00, 3, 10)
+        #     ("many_clusters.dat", gen_gaussian_clusters, 50_000_000, 3, 8)
+        #     #("very_highdim.dat", gen_highdim, 50_000_00, 3, 10)
         # ]
 
 #        "gpu (cpu rather...) go brr": [
@@ -430,7 +430,6 @@ if __name__ == "__main__":
                 print(f"\n✗ Test FAILED: {filename}")
                 print(f"  Error: {str(e)}")
                 failed_tests += 1
-                raise Exception("Stopping further tests due to failure.") 
     
     # Summary
     print(f"\n{'#'*60}")

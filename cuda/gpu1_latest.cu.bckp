@@ -1,0 +1,351 @@
+#include "gpu1.cuh"
+
+__device__ __constant__ double DEVICE_INF = DBL_MAX;
+
+__host__ __device__ inline void compute_distance_l2(const double* points, const double* clusters, int idx, int k_idx, int N, int K, int D, double* result)
+{
+    double sum = 0.0;
+    for(int d=0; d < D; ++d)
+    {
+        double diff = points[d * N + idx] - clusters[d * K + k_idx];
+        sum += diff * diff;
+    }
+    *result = sum;
+
+}
+
+__global__ void update_centroids(double* centroids, const double* newClusters, 
+                                  const int* clustersSizes, int K, int D)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+    
+    if (clustersSizes[k] > 0)
+    {
+        for (int d = 0; d < D; ++d)
+        {
+            centroids[d * K + k] = newClusters[d * K + k] / clustersSizes[k];
+        }
+    }
+}
+
+__global__ void compute_clusters(const double* datapoints, double *centroids,
+    int N, int K, int D,
+    int* assignments, unsigned int* assignmentsChanged, double* newClusters, int* clustersSizes)
+{
+    extern __shared__ char sharedMem[];
+
+    unsigned char* changedFlag = (unsigned char*)sharedMem;
+
+    double* clusters = (double*)(sharedMem + sizeof(unsigned char) * blockDim.x);
+
+    if (threadIdx.x < K)
+    {
+        for (int d = 0; d < D; ++d)
+        {
+            clusters[d * K + threadIdx.x] = centroids[d*K + threadIdx.x];
+        }
+    }
+    changedFlag[threadIdx.x] = 0;
+    __syncthreads();
+
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= N)
+    {
+        // sharedMem[threadIdx.x] = 0;
+        return;
+    }
+
+    double minDistance = DEVICE_INF;
+    int bestCluster = 0;
+
+    for (int k = 0; k < K; k++) {
+        double distance;
+        // compute_distance_l2(&datapoints[idx * D], &clusters[k * D], D, &distance);
+        compute_distance_l2(datapoints, clusters, idx, k, N, K, D, &distance);
+        if (distance < minDistance) {
+            minDistance = distance;
+            bestCluster = k;
+        }
+    }
+
+    if (assignments[idx] != bestCluster)
+    {
+        assignments[idx] = bestCluster;
+        changedFlag[threadIdx.x] = 1;
+    }
+
+    __syncthreads();
+
+    for (int i = blockDim.x / 2; i > 0; i >>= 1)
+    {
+        if (threadIdx.x < i)
+        {
+            changedFlag[threadIdx.x] += changedFlag[threadIdx.x + i];
+        }
+        __syncthreads();
+    }
+
+    if (threadIdx.x == 0)
+    {
+        assignmentsChanged[blockIdx.x] = changedFlag[0];
+    }
+	// sharedMem[threadIdx.x] = 0;
+}
+
+__global__ void compute_delta(const unsigned int* assignmentsChanged, int N, unsigned int* delta)
+{
+    // tree based reduction here happens
+    extern __shared__ unsigned int shm[];
+    int tid = threadIdx.x;
+
+    unsigned int sum = 0;
+    for (int i = tid; i < N; i += blockDim.x)
+    {
+        sum += assignmentsChanged[i];
+    }
+    shm[tid] = sum;
+    __syncthreads();
+
+    if (tid >= N)
+    {
+        shm[tid] = 0;
+        return;
+    }
+
+    for (int i = blockDim.x / 2; i > 0; i >>= 1)
+    {
+        if (tid < i)
+        {
+            shm[tid] += shm[tid + i];
+        }
+        __syncthreads();
+    }
+
+    if (tid == 0)
+    {
+        *delta = shm[0];
+    }
+    // shm[tid] = 0;
+}
+
+
+__global__ void scatter_clusters(const double* datapoints, const int* assignments,
+    int N, int K, int D,
+    double* newClusters, int* clustersSizes)
+{
+    extern __shared__ char shmm[];
+
+    unsigned int *shmSizes = (unsigned int *)shmm;
+
+    size_t offset = ((sizeof(unsigned int) * K + 8 - 1) / 8) * 8; // align to double
+    double *shmClusters = (double*)(shmm + offset);
+
+    if(threadIdx.x < K)
+    {
+        shmSizes[threadIdx.x] = 0;
+        for (int d = 0; d < D; ++d)
+        {
+            // i think there are a lot of bank conflicts as we can have up to 20 stride (doesnt happen when e.g. D=4 K=5, test with larger vals, also check out for other places for bank conflicts)
+            shmClusters[d * K + threadIdx.x] = 0.0;
+        }
+    }
+
+    __syncthreads();
+
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= N) return;
+
+    int clusterIdx = assignments[idx];
+
+    for (int d = 0; d < D; ++d)
+    {
+        // atomicAdd(&shmClusters[clusterIdx * D + d], datapoints[idx * D + d]);
+        atomicAdd(&shmClusters[d * K + clusterIdx], datapoints[d * N + idx]);
+    }
+    atomicAdd(&shmSizes[clusterIdx], 1);
+
+
+    if(threadIdx.x < K)
+    {
+        __syncthreads(); // maybe put it inside if - since volta its clearly safe
+        for (int d = 0; d < D; ++d)
+        {
+            // atomicAdd(&newClusters[threadIdx.x * D + d], shmClusters[threadIdx.x * D + d]);
+            atomicAdd(&newClusters[d * K + threadIdx.x], shmClusters[d * K + threadIdx.x]);
+        }
+        atomicAdd(&clustersSizes[threadIdx.x], shmSizes[threadIdx.x]);
+    }
+}
+
+extern "C"
+void kmeans_host(const double* datapoints, double* centroids,
+    int N, int K, int D, int* assignments, TimerManager *tm)
+{
+    TimerGPU timerGPU;
+    tm->SetTimer(&timerGPU);
+
+    // double *datapoints_col_major = (double*)malloc(N * D * sizeof(double));
+    // if (!datapoints_col_major) ERR("malloc datapoints_col_major failed.");
+    // row_to_col_major<double>(datapoints, datapoints_col_major, N, D); // AoS -> SoA
+
+    const double* deviceDatapoints;
+    double* deviceCentroids;
+    int* deviceAssignments;
+    unsigned int* deviceAssignmentsChanged;
+    double* newClusters;
+    int* clustersSizes;
+    size_t datapointsSize = N * D * sizeof(double);
+    size_t centroidsSize = K * D * sizeof(double);
+    size_t assignmentsSize = N * sizeof(int);
+    size_t clustersSizesSize = K * sizeof(int);
+
+    clustersSizes = (int*)malloc(clustersSizesSize);
+    if (!clustersSizes) ERR("malloc clustersSizes failed.");
+    memset((void*)clustersSizes, 0, clustersSizesSize);
+    newClusters = (double*)malloc(centroidsSize);
+    if (!newClusters) ERR("malloc newClusters failed.");
+    memset((void*)newClusters, 0, centroidsSize);
+
+    double *newClustersDevice;
+    int *clustersSizesDevice;
+    CUDA_CHECK(cudaMalloc((void**)&newClustersDevice, centroidsSize));
+    CUDA_CHECK(cudaMalloc((void**)&clustersSizesDevice, clustersSizesSize));
+
+    CUDA_CHECK(cudaMalloc((void**)&deviceDatapoints, datapointsSize));
+    CUDA_CHECK(cudaMalloc((void**)&deviceCentroids, centroidsSize));
+    CUDA_CHECK(cudaMalloc((void**)&deviceAssignments, assignmentsSize));
+
+    // first we need to initialize centroids by first K datapoints (here we should ensure K <= N!)
+    // TODO: add check for K <= N or simply memset centroids to 0 beforehand
+    CUDA_CHECK(cudaMemcpy((void*)deviceDatapoints, (const void*)datapoints, datapointsSize, cudaMemcpyHostToDevice));
+    // CUDA_CHECK(cudaMemcpy((void*)deviceCentroids, (const void*)datapoints, centroidsSize, cudaMemcpyHostToDevice));
+
+    // AoS -> SoA
+    for (int k = 0; k < K; ++k)
+    {
+        for (int d = 0; d < D; ++d)
+        {
+            centroids[d * K + k] = datapoints[d * N + k];
+        }
+    }
+
+    CUDA_CHECK(cudaMemcpy((void*)deviceCentroids, (const void*)centroids, centroidsSize, cudaMemcpyHostToDevice));
+
+    // Initialize assignments
+    CUDA_CHECK(cudaMemset((void*)deviceAssignments, 0, assignmentsSize));
+
+    // CUDA_CHECK(cudaMemset((void*)newClustersDevice, 0, centroidsSize));
+    CUDA_CHECK(cudaMemcpy((void*)newClustersDevice, (const void*)centroids, centroidsSize, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemset((void*)clustersSizesDevice, 0, clustersSizesSize));
+
+    unsigned delta = N;
+
+    // Kernel launch parameters
+    int threadsPerBlock = 128; // unsigned char limitation in shared memory usage
+    int blocksPerGrid = (N + threadsPerBlock - 1) / threadsPerBlock;
+    int sharedMemSize = sizeof(unsigned char) * threadsPerBlock + sizeof(double) * K * D;
+    
+    int threadsPerBlockDelta = 512;
+    int blocksPerGridDelta = 1;
+    int sharedMemSizeDelta = sizeof(unsigned int) * threadsPerBlockDelta;
+
+    CUDA_CHECK(cudaMalloc((void**)&deviceAssignmentsChanged, sizeof(unsigned int) * blocksPerGrid));
+    CUDA_CHECK(cudaMemset((void*)deviceAssignmentsChanged, 0, sizeof(unsigned int) * blocksPerGrid));
+
+    for (int iter = 0; iter < MAX_ITERATIONS && delta > 0; iter++)
+    {
+        // CUDA_CHECK(cudaMemcpy((void*)deviceCentroids, (const void*)centroids, centroidsSize, cudaMemcpyHostToDevice));
+        // memset((void*)clustersSizes, 0, clustersSizesSize);
+        
+        tm->Start();
+        compute_clusters << <blocksPerGrid, threadsPerBlock, sharedMemSize >> > (deviceDatapoints, deviceCentroids,
+            N, K, D, deviceAssignments, deviceAssignmentsChanged, newClustersDevice, clustersSizesDevice);
+        tm->Stop();
+        CUDA_CHECK(cudaDeviceSynchronize());
+        CUDA_CHECK(cudaGetLastError());
+
+        CUDA_CHECK(cudaMemset((void*)newClustersDevice, 0, centroidsSize));
+        CUDA_CHECK(cudaMemset((void*)clustersSizesDevice, 0, clustersSizesSize));
+
+        // Reset delta
+        delta = 0;
+        unsigned int* deviceDelta;
+        CUDA_CHECK(cudaMalloc((void**)&deviceDelta, sizeof(unsigned int)));
+        CUDA_CHECK(cudaMemcpy((void*)deviceDelta, (const void*)&delta, sizeof(unsigned int), cudaMemcpyHostToDevice));
+
+        tm->Start();
+        compute_delta << <blocksPerGridDelta, threadsPerBlockDelta, sharedMemSizeDelta >> > (deviceAssignmentsChanged, blocksPerGrid, deviceDelta);
+        tm->Stop();
+        CUDA_CHECK(cudaDeviceSynchronize());
+        CUDA_CHECK(cudaGetLastError());
+
+        CUDA_CHECK(cudaMemcpy((void*)&delta, (const void*)deviceDelta, sizeof(unsigned int), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaFree((void*)deviceDelta));
+
+        // Here we should recompute centroids based on new assignments
+        CUDA_CHECK(cudaMemset((void*)deviceAssignmentsChanged, 0, sizeof(unsigned int) * blocksPerGrid));
+        // CUDA_CHECK(cudaMemcpy((void*)assignments, (const void*)deviceAssignments, assignmentsSize, cudaMemcpyDeviceToHost));
+
+        // int start_idx = iter == 0 ? K : 0;
+        int numThreads = 128;
+        int numBlocks = (N + numThreads - 1) / numThreads;
+        int sharedMemSizeScatter = ((sizeof(unsigned int) * K + 8 - 1) / 8) * 8 + sizeof(double) * K * D;
+        
+        // tm->SetTimer(&timerCPU);
+        tm->Start();
+        scatter_clusters << <numBlocks, numThreads, sharedMemSizeScatter >> > (deviceDatapoints, deviceAssignments,
+            N, K, D,
+            newClustersDevice, clustersSizesDevice);
+        tm->Stop();
+        CUDA_CHECK(cudaDeviceSynchronize());
+        CUDA_CHECK(cudaGetLastError());
+
+        // Update centroids
+        int centroidThreads = min(K, 256);
+        int centroidBlocks = (K + centroidThreads - 1) / centroidThreads;
+        
+        tm->Start();
+        update_centroids<<<centroidBlocks, centroidThreads>>>(
+            deviceCentroids, newClustersDevice, clustersSizesDevice, K, D);
+        tm->Stop();
+        CUDA_CHECK(cudaDeviceSynchronize());
+        CUDA_CHECK(cudaGetLastError());
+
+        printf("Iteration: %d, changes: %d\n", iter, delta);
+
+    }
+
+    // if (D == 3) 
+    // {
+    //     float minx, maxx, miny, maxy, minz, maxz;
+    //     compute_bounds(datapoints, N, minx, maxx, miny, maxy, minz, maxz);
+    //     render(deviceDatapoints, deviceAssignments, N, K, minx, maxx, miny, maxy, minz, maxz);
+    // }
+
+    CUDA_CHECK(cudaMemcpy((void*)assignments, (const void*)deviceAssignments, assignmentsSize, cudaMemcpyDeviceToHost));
+    
+    // Copy centroids from device (column-major) and convert to row-major for output
+    double* centroids_col_major = (double*)malloc(centroidsSize);
+    if (!centroids_col_major) ERR("malloc centroids_col_major failed.");
+    CUDA_CHECK(cudaMemcpy((void*)centroids_col_major, (const void*)deviceCentroids, centroidsSize, cudaMemcpyDeviceToHost));
+    
+    // Convert from column-major (SoA) to row-major (AoS) for output
+    for (int k = 0; k < K; ++k)
+    {
+        for (int d = 0; d < D; ++d)
+        {
+            centroids[k * D + d] = centroids_col_major[d * K + k];
+        }
+    }
+
+    CUDA_CHECK(cudaFree((void*)deviceDatapoints));
+    CUDA_CHECK(cudaFree((void*)deviceCentroids));
+    CUDA_CHECK(cudaFree((void*)deviceAssignments));
+    CUDA_CHECK(cudaFree((void*)deviceAssignmentsChanged));
+    CUDA_CHECK(cudaFree((void*)newClustersDevice));
+    CUDA_CHECK(cudaFree((void*)clustersSizesDevice));
+    free(centroids_col_major);
+    free(clustersSizes);
+    free(newClusters);
+}

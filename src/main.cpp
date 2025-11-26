@@ -1,12 +1,13 @@
 ﻿#include <stdio.h>
 #include <cstdlib>
 
-#include "gpu1.cuh"
-#include "gpu2.cuh"
-#include "cpu.h"
+// #include "gpu1.cuh"
+// #include "gpu2.cuh"
+// #include "cpu.h"
 #include "utils.h"
 #include "error_utils.h"
 #include "timer.h"
+#include "dispatcher.h"
 
 void print_info(Dataset* d, int data_format)
 {
@@ -31,7 +32,10 @@ int main(int argc, char** argv)
     printf("Reading data to CPU...\n");
     tm.Start();
     if (data_format == TXT_DATA_FORMAT) load_txt_data(&dataset, data_path);
-    else load_bin_data(&dataset, data_path);
+    else {
+        if(compute_method == CPU) load_bin_data_cpu(&dataset, data_path);
+        else load_bin_data_gpu(&dataset, data_path);
+    }
     tm.Stop();
     print_info(&dataset, data_format);
     float time_load_data = tm.TotalElapsedSeconds();
@@ -50,21 +54,24 @@ int main(int argc, char** argv)
     int* assignments = (int*)malloc(dataset.N * sizeof(int));
 	if (!centroids || !assignments) ERR("malloc centroids/assignments failed.");
 
-    if (compute_method == GPU1)
-    {
-        printf("Running K-means on gpu1 (parallel, custom kernels)...\n");
-        kmeans_host(dataset.datapoints, centroids, dataset.N, dataset.K, dataset.D, assignments, &tm);
-    }
-    else if (compute_method == GPU2)
-    {
-        printf("Running K-means on gpu2 (parallel, thrust)...\n");
-		thrust_kmeans_host(dataset.datapoints, centroids, dataset.N, dataset.K, dataset.D, assignments, &tm);
-    }
-    else // CPU
-    {
-        printf("Running K-means on CPU (sequential)...\n");
-        seq_kmeans(dataset.datapoints, centroids, dataset.N, dataset.K, dataset.D, assignments, &tm);
-    }
+    // if (compute_method == GPU1)
+    // {
+    //     printf("Running K-means on gpu1 (parallel, custom kernels)...\n");
+    //     kmeans_host(dataset.datapoints, centroids, dataset.N, dataset.K, dataset.D, assignments, &tm);
+    // }
+    // else if (compute_method == GPU2)
+    // {
+    //     printf("Running K-means on gpu2 (parallel, thrust)...\n");
+	// 	thrust_kmeans_host(dataset.datapoints, centroids, dataset.N, dataset.K, dataset.D, assignments, &tm);
+    // }
+    // else // CPU
+    // {
+    //     printf("Running K-means on CPU (sequential)...\n");
+    //     seq_kmeans(dataset.datapoints, centroids, dataset.N, dataset.K, dataset.D, assignments, &tm);
+    // }
+
+    RunKMeans(dataset.datapoints, centroids, assignments, dataset.N, dataset.K, dataset.D, compute_method, &tm);
+
     float time_computing = tm.TotalElapsedSeconds() - time_load_data;
 	printf("K-means computation time: %.4f seconds\n", time_computing);
 

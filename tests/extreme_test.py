@@ -19,4 +19,4 @@ def write_gaussian_stream(filename, N, d, k, spread=0.1, seed=42):
 
     print(f"[saved] {filename} | shape=({N}, {d}), k={k}")
 
-write_gaussian_stream("../data/gaussian_extreme_case.dat", 50_000_000, 20, 20)
+write_gaussian_stream("../data/gaussian_extreme_case.dat", 50_000_000, 19, 20)

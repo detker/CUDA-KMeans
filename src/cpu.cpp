@@ -70,8 +70,11 @@ void scatter_clusters(const double* datapoints, double *centroids, int N, int K,
     }
 }
 
-void seq_kmeans(double* datapoints, double* centroids, int N, int K, int D, int* assignments, TimerManager* tm)
+void seq_kmeans(const double* datapoints, double* centroids, int N, int K, int D, int* assignments, TimerManager* tm)
 {
+
+
+
     TimerCPU timerCPU;
     tm->SetTimer(&timerCPU);
 
@@ -82,12 +85,17 @@ void seq_kmeans(double* datapoints, double* centroids, int N, int K, int D, int*
     memset(newCentroidsSize, 0, K * sizeof(int));
     memset(centroids, 0, K * D * sizeof(double));
     for(int k=0; k<K; k++) {
-        if(k >= N) break;
+        // if(k >= N) break;
         for(int d=0; d<D; d++) {
             centroids[k * D + d] = datapoints[k * D + d];
         }
     }
 
+    printf("CPU centroid 0: ");
+    for (int d = 0; d < D; d++) {
+        printf("%.10f ", centroids[0 * D + d]);
+    }
+    printf("\n");
     for (int iter = 0; iter < MAX_ITERATIONS && delta > 0; ++iter)
     {
         tm->Start();
@@ -101,7 +109,6 @@ void seq_kmeans(double* datapoints, double* centroids, int N, int K, int D, int*
         printf("Iteration: %d, changes: %d\n", iter, delta);
 
     }
-
 
     free(newCentroids);
     free(newCentroidsSize);

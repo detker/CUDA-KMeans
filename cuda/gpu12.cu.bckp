@@ -1,49 +1,49 @@
-#pragma once
-
-#include <stdio.h>
-#include <cstdlib>
-#include <cuda_runtime.h>
-#include <float.h>
-
-#include "viz.cuh"
-#include "error_utils.h"
-#include "timer.h"
-#include "utils.h"
-
-
-#define MAX_ITERATIONS 100
-// #include "gpu1.cuh"
-
-// Forward declarations for C++ compilation
-template<int D>
-void kmeans_host(const double* datapoints, double* centroids,
-    int N, int K, int* assignments, TimerManager *tm);
-
-#ifdef __CUDACC__
-// CUDA-specific code (only compiled by nvcc)
+#include "gpu1.cuh"
 
 __device__ __constant__ double DEVICE_INF = DBL_MAX;
 
-template<int D>
-__global__ void update_centroids(double* centroids, const double* newClusters, 
-                                  const int* clustersSizes, int K)
+__host__ inline unsigned int nextPowerOfTwo(unsigned int n) 
 {
-    int k = blockIdx.x * blockDim.x + threadIdx.x;
-    if (k >= K) return;
+    if (n == 0) return 1;
     
-    if (clustersSizes[k] > 0)
+    n--;
+    n |= n >> 1;
+    n |= n >> 2;
+    n |= n >> 4;
+    n |= n >> 8;
+    n |= n >> 16;
+    n++;
+    
+    return n;
+}
+
+__host__ __device__ inline void compute_distance_l2(const double* points, const double* clusters, int idx, int k_idx, int N, int K, int D, double* result)
+{
+    double sum = 0.0;
+    for(int d=0; d < D; ++d)
+    {
+        double diff = points[d * N + idx] - clusters[d * K + k_idx];
+        sum += diff * diff;
+    }
+    *result = sum;
+
+}
+
+__global__ void transpose(const double* input, double* output, int N, int D)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < N)
     {
         #pragma unroll
-        for (int d = 0; d < D; ++d)
+        for(int d=0; d < D; ++d)
         {
-            centroids[d * K + k] = newClusters[d * K + k] / clustersSizes[k];
+            output[d * N + idx] = input[idx * D + d];
         }
     }
 }
 
-template<int D>
 __global__ void compute_clusters(const double* datapoints, double *centroids,
-    int N, int K,
+    int N, int K, int D,
     int* assignments, unsigned int* assignmentsChanged, double* newClusters, int* clustersSizes)
 {
     extern __shared__ char sharedMem[];
@@ -54,9 +54,19 @@ __global__ void compute_clusters(const double* datapoints, double *centroids,
 
     if (threadIdx.x < K)
     {
+        if (clustersSizes[threadIdx.x] > 0)
+        {
+            #pragma unroll
+            for (int d = 0; d < D; ++d)
+            {
+                centroids[d*K + threadIdx.x] = newClusters[d*K + threadIdx.x] / clustersSizes[threadIdx.x];
+            }
+        }
+
         #pragma unroll
         for (int d = 0; d < D; ++d)
         {
+            // clusters[d*K + threadIdx.x] = newClusters[d*K + threadIdx.x] / (clustersSizes[threadIdx.x] > 0 ? clustersSizes[threadIdx.x] : 1);
             clusters[d * K + threadIdx.x] = centroids[d*K + threadIdx.x];
         }
     }
@@ -216,45 +226,44 @@ __global__ void compute_clusters(const double* datapoints, double *centroids,
 // 	// sharedMem[threadIdx.x] = 0;
 // }
 
-// __global__ void compute_delta(const unsigned int* assignmentsChanged, int N, unsigned int* delta)
-// {
-//     // tree based reduction here happens
-//     extern __shared__ unsigned int shm[];
-//     int tid = threadIdx.x;
+__global__ void compute_delta(const unsigned int* assignmentsChanged, int N, unsigned int* delta)
+{
+    // tree based reduction here happens
+    extern __shared__ unsigned int shm[];
+    int tid = threadIdx.x;
 
-//     unsigned int sum = 0;
-//     for (int i = tid; i < N; i += blockDim.x)
-//     {
-//         sum += assignmentsChanged[i];
-//     }
-//     shm[tid] = sum;
-//     __syncthreads();
+    unsigned int sum = 0;
+    for (int i = tid; i < N; i += blockDim.x)
+    {
+        sum += assignmentsChanged[i];
+    }
+    shm[tid] = sum;
+    __syncthreads();
 
-//     if (tid >= N)
-//     {
-//         shm[tid] = 0;
-//         return;
-//     }
+    if (tid >= N)
+    {
+        shm[tid] = 0;
+        return;
+    }
 
-//     for (int i = blockDim.x / 2; i > 0; i >>= 1)
-//     {
-//         if (tid < i)
-//         {
-//             shm[tid] += shm[tid + i];
-//         }
-//         __syncthreads();
-//     }
+    for (int i = blockDim.x / 2; i > 0; i >>= 1)
+    {
+        if (tid < i)
+        {
+            shm[tid] += shm[tid + i];
+        }
+        __syncthreads();
+    }
 
-//     if (tid == 0)
-//     {
-//         *delta = shm[0];
-//     }
-//     // shm[tid] = 0;
-// }
+    if (tid == 0)
+    {
+        *delta = shm[0];
+    }
+    // shm[tid] = 0;
+}
 
-template<int D>
 __global__ void scatter_clusters(const double* datapoints, const int* assignments,
-    int N, int K,
+    int N, int K, int D,
     double* newClusters, int* clustersSizes)
 {
     int blocksPerCluster = gridDim.x / K; // number of blocks assigned to each cluster :)
@@ -283,7 +292,6 @@ __global__ void scatter_clusters(const double* datapoints, const int* assignment
     {
         if(assignments[idx] == k)
         {
-            #pragma unroll
             for(int d=0; d < D; ++d)
             {
                 // localSums[D*threadIdx.x + d] += datapoints[D*idx + d];
@@ -372,10 +380,13 @@ __global__ void scatter_clusters(const double* datapoints, const int* assignment
 //     }
 // }
 
-template<int D>
+extern "C"
 void kmeans_host(const double* datapoints, double* centroids,
-    int N, int K, int* assignments, TimerManager *tm)
+    int N, int K, int D, int* assignments, TimerManager *tm)
 {
+    
+
+
     TimerGPU timerGPU;
     tm->SetTimer(&timerGPU);
 
@@ -431,7 +442,6 @@ void kmeans_host(const double* datapoints, double* centroids,
     // AoS -> SoA
     for (int k = 0; k < K; ++k)
     {
-        #pragma unroll
         for (int d = 0; d < D; ++d)
         {
             // centroids[d * K + k] = datapoints[k * D + d];
@@ -471,19 +481,19 @@ void kmeans_host(const double* datapoints, double* centroids,
     CUDA_CHECK(cudaMemset((void*)deviceDelta, 0, sizeof(unsigned int)));
 
 
-    // printf("GPU centroid 0: ");
-    // for (int d = 0; d < D; d++) {
-    //     printf("%.10f ", centroids[d * K + 0]);
-    // }
-    // printf("\n");
+    printf("GPU centroid 0: ");
+    for (int d = 0; d < D; d++) {
+        printf("%.10f ", centroids[d * K + 0]);
+    }
+    printf("\n");
     for (int iter = 0; iter < MAX_ITERATIONS && delta > 0; iter++)
     {
         // CUDA_CHECK(cudaMemcpy((void*)deviceCentroids, (const void*)centroids, centroidsSize, cudaMemcpyHostToDevice));
         // memset((void*)clustersSizes, 0, clustersSizesSize);
         
         tm->Start();
-        compute_clusters<D><< <blocksPerGrid, threadsPerBlock, sharedMemSize >> > (deviceDatapoints, deviceCentroids,
-            N, K, deviceAssignments, deviceDelta, newClustersDevice, clustersSizesDevice);
+        compute_clusters << <blocksPerGrid, threadsPerBlock, sharedMemSize >> > (deviceDatapoints, deviceCentroids,
+            N, K, D, deviceAssignments, deviceDelta, newClustersDevice, clustersSizesDevice);
         tm->Stop();
         CUDA_CHECK(cudaDeviceSynchronize());
         CUDA_CHECK(cudaGetLastError());
@@ -523,20 +533,9 @@ void kmeans_host(const double* datapoints, double* centroids,
         // scatter_clusters << <numBlocks, numThreads, sharedMemSizeScatter >> > (deviceDatapoints, deviceAssignments,
         //     N, K, D,
         //     newClustersDevice, clustersSizesDevice);
-        scatter_clusters<D><< <totalBlocks, numThreads, sharedMemSizeScatter >> > (deviceDatapoints, deviceAssignments,
-            N, K,
+        scatter_clusters << <totalBlocks, numThreads, sharedMemSizeScatter >> > (deviceDatapoints, deviceAssignments,
+            N, K, D,
             newClustersDevice, clustersSizesDevice);
-        tm->Stop();
-        CUDA_CHECK(cudaDeviceSynchronize());
-        CUDA_CHECK(cudaGetLastError());
-
-        // Update centroids
-        int centroidThreads = (K < 256) ? K : 256;
-        int centroidBlocks = (K + centroidThreads - 1) / centroidThreads;
-        
-        tm->Start();
-        update_centroids<D><<<centroidBlocks, centroidThreads>>>(
-            deviceCentroids, newClustersDevice, clustersSizesDevice, K);
         tm->Stop();
         CUDA_CHECK(cudaDeviceSynchronize());
         CUDA_CHECK(cudaGetLastError());
@@ -548,9 +547,9 @@ void kmeans_host(const double* datapoints, double* centroids,
 
 
     CUDA_CHECK(cudaMemcpy((void*)assignments, (const void*)deviceAssignments, assignmentsSize, cudaMemcpyDeviceToHost));
-    // CUDA_CHECK(cudaMemcpy((void*)newClusters, (const void*)newClustersDevice, centroidsSize, cudaMemcpyDeviceToHost));
-    // CUDA_CHECK(cudaMemcpy((void*)clustersSizes, (const void*)clustersSizesDevice, clustersSizesSize, cudaMemcpyDeviceToHost));
-    // CUDA_CHECK(cudaMemcpy((void*)centroids, (const void*)deviceCentroids, centroidsSize, cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy((void*)newClusters, (const void*)newClustersDevice, centroidsSize, cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy((void*)clustersSizes, (const void*)clustersSizesDevice, clustersSizesSize, cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy((void*)centroids, (const void*)deviceCentroids, centroidsSize, cudaMemcpyDeviceToHost));
     // AoS
     // for (int k = 0; k < K; ++k)
     // {
@@ -562,28 +561,16 @@ void kmeans_host(const double* datapoints, double* centroids,
     //     }
     //     clustersSizes[k] = 0;
     // }
-    double* centroids_col_major = (double*)malloc(centroidsSize);
-    if (!centroids_col_major) ERR("malloc centroids_col_major failed.");
-    CUDA_CHECK(cudaMemcpy((void*)centroids_col_major, (const void*)deviceCentroids, centroidsSize, cudaMemcpyDeviceToHost));
     // SoA
-    // for (int k = 0; k < K; ++k)
-    // {
-    //     for (int d = 0; d < D; ++d)
-    //     {
-    //         if (clustersSizes[k] > 0) centroids[k * D + d] = newClusters[d * K + k] / clustersSizes[k];
-    //         // else centroids[k * D + d] = 0.0;
-    //         newClusters[d * K + k] = 0.0;
-    //     }
-    //     clustersSizes[k] = 0;
-    // }
-    // Convert from column-major (SoA) to row-major (AoS) for output
     for (int k = 0; k < K; ++k)
     {
-        #pragma unroll
         for (int d = 0; d < D; ++d)
         {
-            centroids[k * D + d] = centroids_col_major[d * K + k];
+            if (clustersSizes[k] > 0) centroids[k * D + d] = newClusters[d * K + k] / clustersSizes[k];
+            // else centroids[k * D + d] = 0.0;
+            newClusters[d * K + k] = 0.0;
         }
+        clustersSizes[k] = 0;
     }
 
     // Just copy and convert layout:
@@ -616,9 +603,7 @@ void kmeans_host(const double* datapoints, double* centroids,
     CUDA_CHECK(cudaFree((void*)newClustersDevice));
     CUDA_CHECK(cudaFree((void*)clustersSizesDevice));
     CUDA_CHECK(cudaFree((void*)deviceDelta));
-    free(centroids_col_major);
+    // free(datapoints_col_major);
     free(clustersSizes);
     free(newClusters);
 }
-
-#endif // __CUDACC__

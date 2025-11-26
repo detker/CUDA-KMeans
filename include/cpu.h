@@ -13,4 +13,4 @@ void compute_clusters(const double* datapoints, double *clusters, int N, int K, 
 
 void scatter_clusters(const double* datapoints, double *centroids, int N, int K, int D, int* assignments, double *newCentroids, int *newCentroidsSize);
 
-void seq_kmeans(double* datapoints, double* centroids, int N, int K, int D, int* assignments, TimerManager* tm);
+void seq_kmeans(const double* datapoints, double* centroids, int N, int K, int D, int* assignments, TimerManager* tm);

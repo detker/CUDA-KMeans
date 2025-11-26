@@ -40,18 +40,27 @@ typedef struct AssignAndCheckChangedFunctor
 
 
 extern "C"
-void thrust_kmeans_host(double* datapoints, double* centroids,
+void thrust_kmeans_host(const double* datapoints, double* centroids,
     int N, int K, int D, int* assignments, TimerManager *tm)
 {
     TimerGPU timerGPU;
     tm->SetTimer(&timerGPU);
 
-    double *datapoints_col_major = new double[N * D];
+    // double *datapoints_col_major = new double[N * D];
     double *centroids_col_major = new double[K * D];
-    row_to_col_major<double>(datapoints, datapoints_col_major, N, D);
-    row_to_col_major<double>(datapoints, centroids_col_major, K, D);
-    thrust::device_vector<double> d_datapoints(datapoints_col_major, datapoints_col_major + N * D);
+    // row_to_col_major<double>(datapoints, datapoints_col_major, N, D);
+    // row_to_col_major<double>(datapoints, centroids_col_major, K, D);
+    // thrust::device_vector<double> d_datapoints(datapoints_col_major, datapoints_col_major + N * D);
+    // thrust::device_vector<double> d_datapoints(datapoints_col_major, datapoints_col_major + N * D);
+    thrust::device_vector<double> d_datapoints(datapoints, datapoints + N * D);
     // double *dp = thrust::raw_pointer_cast(d_datapoints.data());
+    for (int k = 0; k < K; ++k)
+    {
+        for (int d = 0; d < D; ++d)
+        {
+            centroids_col_major[d * K + k] = datapoints[d*N + k];
+        }
+    }
 	thrust::device_vector<double> d_centroids(centroids_col_major, centroids_col_major + K * D);
     // thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(K * D),
     //     d_centroids.begin(),
@@ -145,18 +154,18 @@ void thrust_kmeans_host(double* datapoints, double* centroids,
         printf("Iteration: %d, changes: %d\n", iter, delta);
     }
 
-    if (D == 3) 
-    {
-        float minx, maxx, miny, maxy, minz, maxz;
-        compute_bounds(datapoints, N, minx, maxx, miny, maxy, minz, maxz);
-        // render(deviceDatapoints, deviceAssignments, N, K, minx, maxx, miny, maxy, minz, maxz);
-        render(thrust::raw_pointer_cast(d_datapoints.data()), thrust::raw_pointer_cast(d_assignments.data()), N, K, minx, maxx, miny, maxy, minz, maxz);
-    }
+    // if (D == 3) 
+    // {
+    //     float minx, maxx, miny, maxy, minz, maxz;
+    //     compute_bounds(datapoints, N, minx, maxx, miny, maxy, minz, maxz);
+    //     // render(deviceDatapoints, deviceAssignments, N, K, minx, maxx, miny, maxy, minz, maxz);
+    //     render(thrust::raw_pointer_cast(d_datapoints.data()), thrust::raw_pointer_cast(d_assignments.data()), N, K, minx, maxx, miny, maxy, minz, maxz);
+    // }
 
 	thrust::copy(d_assignments.begin(), d_assignments.end(), assignments);
     thrust::copy(d_centroids.begin(), d_centroids.end(), centroids_col_major);
     col_to_row_major<double>(centroids_col_major, centroids, K, D);    
 
-    free(datapoints_col_major);
+    // free(datapoints_col_major);
     free(centroids_col_major);
 }
