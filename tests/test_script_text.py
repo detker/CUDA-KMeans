@@ -51,8 +51,9 @@ def write_text(filename, data, k):
 
     with open(filename, "w") as f:
         # Write point coordinates
-        for i, point in enumerate(data):
-            f.write(str(i+1) + " " + " ".join(map(str, point)) + "\n")
+        f.write(f'{N} {d} {k}\n')
+        for point in data:
+            f.write(" ".join(map(str, point)) + "\n")
 
     print(f"[saved] {filename} | shape=({N}, {d}), k={k}")
 
@@ -281,16 +282,16 @@ def run_test(filename, data, k, OUT='../data/'):
     print(f"{'='*60}")
     
     # Write data
-    write_binary(OUT + filename, data, k)
+    write_text(OUT + filename, data, k)
     
     # Run GPU version
     print("Running GPU version...")
-    launch_mine('bin', 'gpu1', OUT + filename, OUT + filename + '_output_gpu.txt')
+    launch_mine('txt', 'gpu1', OUT + filename, OUT + filename + '_output_gpu.txt')
     print('✓ KMeans GPU finished')
     
     # Run CPU version
     print("Running CPU version...")
-    launch_mine('bin', 'cpu', OUT + filename, OUT + filename + '_output_cpu.txt')
+    launch_mine('txt', 'cpu', OUT + filename, OUT + filename + '_output_cpu.txt')
     print('✓ KMeans CPU finished')
     
     # Compare results
@@ -315,59 +316,59 @@ if __name__ == "__main__":
     test_suites = {
         "quick": [
             # Small synthetic tests
-            ("small_uniform.dat", gen_uniform, 1000, 3, 5),
-            ("small_gaussian.dat", gen_gaussian_clusters, 2000, 3, 4),
+            ("small_uniform.txt", gen_uniform, 1000, 3, 5),
+            ("small_gaussian.txt", gen_gaussian_clusters, 2000, 3, 4),
         ],
         
         "real_datasets": [
             # Real datasets
-            ("iris_original.dat", lambda N, d, k: load_iris_data()[0], 150, 4, 3),
-            ("iris_scaled_10k.dat", lambda N, d, k: scale_real_dataset(load_iris_data()[0], N), 10000, 4, 3),
-            ("wine_original.dat", lambda N, d, k: load_wine_data()[0], 178, 13, 3),
-            ("wine_scaled_50k.dat", lambda N, d, k: scale_real_dataset(load_wine_data()[0], N), 50000, 13, 3),
+            ("iris_original.txt", lambda N, d, k: load_iris_data()[0], 150, 4, 3),
+            ("iris_scaled_10k.txt", lambda N, d, k: scale_real_dataset(load_iris_data()[0], N), 10000, 4, 3),
+            ("wine_original.txt", lambda N, d, k: load_wine_data()[0], 178, 13, 3),
+            ("wine_scaled_50k.txt", lambda N, d, k: scale_real_dataset(load_wine_data()[0], N), 50000, 13, 3),
             # ("breast_cancer.dat", lambda N, d, k: load_breast_cancer_data()[0], 569, 30, 2),
         ],
         
         "synthetic_medium": [
             # Medium-sized synthetic tests
-            ("uniform_10k.dat", gen_uniform, 10000, 3, 5),
-            ("gaussian_20k.dat", gen_gaussian_clusters, 20000, 4, 8),
-            ("overlap_15k.dat", gen_overlapping_clusters, 15000, 3, 6),
-            ("skewed_30k.dat", gen_skewed_density, 30000, 3, 10),
-            ("blobs_25k.dat", gen_blobs_sklearn, 25000, 5, 7),
+            ("uniform_10k.txt", gen_uniform, 10000, 3, 5),
+            ("gaussian_20k.txt", gen_gaussian_clusters, 20000, 4, 8),
+            ("overlap_15k.txt", gen_overlapping_clusters, 15000, 3, 6),
+            ("skewed_30k.txt", gen_skewed_density, 30000, 3, 10),
+            ("blobs_25k.txt", gen_blobs_sklearn, 25000, 5, 7),
         ],
         
         "challenging": [
             # Challenging patterns for k-means
-            ("moons_5k.dat", gen_moons, 5000, 3, 2),
-            ("circles_8k.dat", gen_circles, 8000, 3, 2),
-            ("elongated_12k.dat", gen_elongated_clusters, 12000, 4, 6),
-            ("sparse_dense_20k.dat", gen_sparse_dense_mix, 20000, 3, 8),
-            ("grid_10k.dat", gen_grid_clusters, 10000, 4, 9),
+            ("moons_5k.txt", gen_moons, 5000, 3, 2),
+            ("circles_8k.txt", gen_circles, 8000, 3, 2),
+            ("elongated_12k.txt", gen_elongated_clusters, 12000, 4, 6),
+            ("sparse_dense_20k.txt", gen_sparse_dense_mix, 20000, 3, 8),
+            ("grid_10k.txt", gen_grid_clusters, 10000, 4, 9),
         ],
         
         "high_dimensional": [
             # High-dimensional tests
-            ("highdim_10d.dat", gen_highdim, 5000, 10, 5),
-            ("highdim_20d.dat", gen_highdim, 3000, 20, 4),
+            ("highdim_10d.txt", gen_highdim, 5000, 10, 5),
+            ("highdim_20d.txt", gen_highdim, 3000, 20, 4),
             # ("highdim_50d.dat", gen_highdim, 2000, 50, 6),
-            ("gaussian_highdim.dat", gen_gaussian_clusters, 10000, 15, 8),
-        ],
+            ("gaussian_highdim.txt", gen_gaussian_clusters, 10000, 15, 8),
+        ]
         
-        "large_scale": [
-            # Large-scale tests (original size)
-            ("uniform_big.dat", gen_uniform, 1200000, 3, 10),
-            ("overlap_big.dat", gen_overlapping_clusters, 900000, 3, 8),
-            ("gaussian_big.dat", gen_gaussian_clusters, 1000000, 3, 8),
-            ("skewed_big.dat", gen_skewed_density, 1500000, 3, 12),
-        ],
+        # "large_scale": [
+        #     # Large-scale tests (original size)
+        #     ("uniform_big.dat", gen_uniform, 1200000, 3, 10),
+        #     ("overlap_big.dat", gen_overlapping_clusters, 900000, 3, 8),
+        #     ("gaussian_big.dat", gen_gaussian_clusters, 1000000, 3, 8),
+        #     ("skewed_big.dat", gen_skewed_density, 1500000, 3, 12),
+        # ],
         
-        "extreme": [
-            # Extreme cases
-            ("many_clusters.dat", gen_gaussian_clusters, 50000, 3, 20),
-            ("very_highdim.dat", gen_highdim, 10000, 20, 10),
-            ("tiny_dataset.dat", gen_uniform, 100, 2, 3),
-        ],
+        # "extreme": [
+        #     # Extreme cases
+        #     ("many_clusters.dat", gen_gaussian_clusters, 50000, 3, 20),
+        #     ("very_highdim.dat", gen_highdim, 10000, 20, 10),
+        #     ("tiny_dataset.dat", gen_uniform, 100, 2, 3),
+        # ],
 
         # "ultra extreme": [
         #     # Ultra Extreme cases

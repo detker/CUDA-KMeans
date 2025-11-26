@@ -37,5 +37,3 @@ __global__ void scatter_clusters(const double* datapoints, const int* assignment
     int N, int K,
     double* newClusters, int* clustersSizes, double* centroids);
 
-
-

@@ -302,6 +302,13 @@ void kmeans_host(const double* datapoints, double* centroids,
 
     }
 
+    if (D == 3) 
+    {
+        float minx, maxx, miny, maxy, minz, maxz;
+        compute_bounds(datapoints, N, minx, maxx, miny, maxy, minz, maxz);
+        render(deviceDatapoints, deviceAssignments, N, K, minx, maxx, miny, maxy, minz, maxz);
+    }
+
     CUDA_CHECK(cudaMemcpy((void*)assignments, (const void*)deviceAssignments, assignmentsSize, cudaMemcpyDeviceToHost));
 
     double* centroids_col_major = (double*)malloc(centroidsSize);

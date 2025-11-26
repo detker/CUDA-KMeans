@@ -32,10 +32,7 @@ int main(int argc, char** argv)
     printf("Reading data to CPU...\n");
     tm.Start();
     if (data_format == TXT_DATA_FORMAT) load_txt_data(&dataset, data_path);
-    else {
-        if(compute_method == CPU) load_bin_data_cpu(&dataset, data_path);
-        else load_bin_data_gpu(&dataset, data_path);
-    }
+    else load_bin_data(&dataset, data_path);
     tm.Stop();
     print_info(&dataset, data_format);
     float time_load_data = tm.TotalElapsedSeconds();

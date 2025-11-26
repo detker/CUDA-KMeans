@@ -1,9 +1,11 @@
 #include "cpu.h"
 
 
-double compute_distance_l2(const double* point1, const double* point2, int D)
+template<int D>
+double compute_distance_l2(const double* point1, const double* point2)
 {
     double sum = 0.0;
+    #pragma unroll
     for (int d = 0; d < D; d++)
     {
         double diff = point1[d] - point2[d];
@@ -13,20 +15,30 @@ double compute_distance_l2(const double* point1, const double* point2, int D)
 }
 
 
-void compute_clusters(const double* datapoints, double *clusters, int N, int K, int D,
+template<int D>
+void compute_clusters(const double* datapoints, double *clusters, int N, int K,
     int* assignments, int *delta)
 {
     *delta = 0;
     for (int n = 0; n < N; n++)
     {
-        const double *current_point = datapoints + n * D;
+        // const double *current_point = datapoints + n * D;
         int nearest_cluster = -1;
         double min_distance = DBL_MAX;
 
         for(int k=0; k<K; ++k)
         {
-            const double *current_cluster = clusters + k * D;
-            double distance = compute_distance_l2(current_point, current_cluster, D);
+            // const double *current_cluster = clusters + k * D;
+            double distance = 0.0;
+
+            #pragma unroll
+            for(int d=0; d<D; ++d) 
+            {
+                double diff = datapoints[d * N + n] - clusters[k * D + d];
+                distance += diff * diff;
+            }
+
+            // double distance = compute_distance_l2<D>(current_point, current_cluster);
             if (distance < min_distance)
             {
                 min_distance = distance;
@@ -42,21 +54,24 @@ void compute_clusters(const double* datapoints, double *clusters, int N, int K, 
     }    
 }
 
-void scatter_clusters(const double* datapoints, double *centroids, int N, int K, int D, int* assignments, double *newCentroids, int *newCentroidsSize)
+template<int D>
+void scatter_clusters(const double* datapoints, double *centroids, int N, int K, int* assignments, double *newCentroids, int *newCentroidsSize)
 {
     for (int n = 0; n < N; n++)
     {
         int cluster_id = assignments[n];
-        const double *current_point = datapoints + n * D;
+        // const double *current_point = datapoints + n * D;
+        #pragma unroll
         for (int d = 0; d < D; d++)
         {
-            newCentroids[cluster_id * D + d] += current_point[d];
+            newCentroids[cluster_id * D + d] += datapoints[d * N + n];
         }
         newCentroidsSize[cluster_id]++;
     }
 
     for (int k = 0; k < K; k++)
     {
+        #pragma unroll
         for (int d = 0; d < D; d++)
         {
             if (newCentroidsSize[k] > 0)
@@ -70,11 +85,9 @@ void scatter_clusters(const double* datapoints, double *centroids, int N, int K,
     }
 }
 
-void seq_kmeans(const double* datapoints, double* centroids, int N, int K, int D, int* assignments, TimerManager* tm)
+template<int D>
+void seq_kmeans(const double* datapoints, double* centroids, int N, int K, int* assignments, TimerManager* tm)
 {
-
-
-
     TimerCPU timerCPU;
     tm->SetTimer(&timerCPU);
 
@@ -86,30 +99,54 @@ void seq_kmeans(const double* datapoints, double* centroids, int N, int K, int D
     memset(centroids, 0, K * D * sizeof(double));
     for(int k=0; k<K; k++) {
         // if(k >= N) break;
+        #pragma unroll
         for(int d=0; d<D; d++) {
-            centroids[k * D + d] = datapoints[k * D + d];
+            centroids[k * D + d] = datapoints[d * N + k];
         }
     }
 
-    printf("CPU centroid 0: ");
-    for (int d = 0; d < D; d++) {
-        printf("%.10f ", centroids[0 * D + d]);
-    }
-    printf("\n");
     for (int iter = 0; iter < MAX_ITERATIONS && delta > 0; ++iter)
     {
         tm->Start();
-        compute_clusters(datapoints, centroids, N, K, D, assignments, &delta);
+        compute_clusters<D>(datapoints, centroids, N, K, assignments, &delta);
         tm->Stop();
 
         tm->Start();
-        scatter_clusters(datapoints, centroids, N, K, D, assignments, newCentroids, newCentroidsSize);
+        scatter_clusters<D>(datapoints, centroids, N, K, assignments, newCentroids, newCentroidsSize);
         tm->Stop();
 
         printf("Iteration: %d, changes: %d\n", iter, delta);
 
     }
 
+    // double *centroids_row_major = (double*)malloc(K * D * sizeof(double));
+    // col_to_row_major<double>(centroids, centroids_row_major, K, D);
+
+    // free(centroids);
     free(newCentroids);
     free(newCentroidsSize);
 }
+
+
+using KMeansFunc = void(const double*, double*, int, int, int*, TimerManager*);
+
+template KMeansFunc seq_kmeans<1>;
+template KMeansFunc seq_kmeans<2>;
+template KMeansFunc seq_kmeans<3>;
+template KMeansFunc seq_kmeans<4>;
+template KMeansFunc seq_kmeans<5>;
+template KMeansFunc seq_kmeans<6>;
+template KMeansFunc seq_kmeans<7>;
+template KMeansFunc seq_kmeans<8>;
+template KMeansFunc seq_kmeans<9>;
+template KMeansFunc seq_kmeans<10>;
+template KMeansFunc seq_kmeans<11>;
+template KMeansFunc seq_kmeans<12>;
+template KMeansFunc seq_kmeans<13>;
+template KMeansFunc seq_kmeans<14>;
+template KMeansFunc seq_kmeans<15>;
+template KMeansFunc seq_kmeans<16>;
+template KMeansFunc seq_kmeans<17>;
+template KMeansFunc seq_kmeans<18>;
+template KMeansFunc seq_kmeans<19>;
+template KMeansFunc seq_kmeans<20>;

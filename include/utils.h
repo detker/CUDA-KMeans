@@ -24,11 +24,9 @@ typedef struct {
 
 void usage(char* name);
 
+void load_bin_data(Dataset* dataset, const char* filename);
+
 void load_txt_data(Dataset* dataset, const char* filename);
-
-void load_bin_data_gpu(Dataset* dataset, const char* filename);
-
-void load_bin_data_cpu(Dataset* dataset, const char* filename);
 
 void save_output(double** centroids, int** assignments, Dataset* dataset, char* output_path);
 

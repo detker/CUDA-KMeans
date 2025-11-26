@@ -37,7 +37,7 @@ struct KMeansDispatcher
         else // CPU
         {
             printf("Running K-means on CPU (sequential)...\n");
-            seq_kmeans(datapoints, centroids, N, K, D, assignments, tm);
+            seq_kmeans<D>(datapoints, centroids, N, K, assignments, tm);
         }
     }
 };
