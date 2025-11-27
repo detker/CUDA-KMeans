@@ -9,6 +9,7 @@
 #include "error_utils.h"
 #include "timer.h"
 #include "utils.h"
+#include "visualizer.cuh"
 
 
 #define MAX_ITERATIONS 100

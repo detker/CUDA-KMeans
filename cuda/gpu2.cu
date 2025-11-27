@@ -162,6 +162,11 @@ void thrust_kmeans_host(const double* datapoints, double* centroids,
     //     // render(deviceDatapoints, deviceAssignments, N, K, minx, maxx, miny, maxy, minz, maxz);
     //     render(thrust::raw_pointer_cast(d_datapoints.data()), thrust::raw_pointer_cast(d_assignments.data()), N, K, minx, maxx, miny, maxy, minz, maxz);
     // }
+    auto visualizer = VisualizerFactory::create(VisualizerFactory::Type::GPU_type, D);
+    if (visualizer && visualizer->canVisualize(D))
+    {
+        visualizer->visualize(thrust::raw_pointer_cast(d_datapoints.data()), thrust::raw_pointer_cast(d_assignments.data()), N, K, D);
+    }
 
 	thrust::copy(d_assignments.begin(), d_assignments.end(), assignments);
     thrust::copy(d_centroids.begin(), d_centroids.end(), centroids_col_major);

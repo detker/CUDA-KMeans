@@ -1,3 +1,5 @@
+#pragma once
+
 #include <stdio.h>
 #include "gpu1.cuh"
 #include "gpu2.cuh"

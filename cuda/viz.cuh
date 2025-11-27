@@ -33,7 +33,7 @@ static Mat4 scale(float s);
 
 static GLuint compileShader(GLenum type, const char* src);
 
-__global__ void fillVBOKernel(const double* points, int* assignments, int N, int K, float minx, float maxx, float miny, float maxy, float minz, float maxz, float* outPos, unsigned char* outCol);
+__global__ void fillVBOKernel(const double* points, const unsigned char* assignments, int N, int K, float minx, float maxx, float miny, float maxy, float minz, float maxz, float* outPos, unsigned char* outCol);
 
 void cursorPosCallback(GLFWwindow* window, double xpos, double ypos);
 
@@ -44,4 +44,4 @@ void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
 // static void compute_bounds(const std::vector<double>& pts, int N, float& minx, float& maxx, float& miny, float& maxy, float& minz, float& maxz);
 
 // int render(const double* points, const double* d_points, int* d_assignments, int N, int K);
-int render(const double* d_points, int* d_assignments, int N, int K, float minx, float maxx, float miny, float maxy, float minz, float maxz);
+int render(const double* d_points, const unsigned char* d_assignments, int N, int K, float minx, float maxx, float miny, float maxy, float minz, float maxz);

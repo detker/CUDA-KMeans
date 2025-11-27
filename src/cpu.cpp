@@ -97,6 +97,7 @@ void seq_kmeans(const double* datapoints, double* centroids, int N, int K, unsig
     memset(newCentroids, 0, K * D * sizeof(double));
     memset(newCentroidsSize, 0, K * sizeof(int));
     memset(centroids, 0, K * D * sizeof(double));
+    memset(assignments, 0, N * sizeof(unsigned char));
     for(int k=0; k<K; k++) {
         // if(k >= N) break;
         #pragma unroll
@@ -121,6 +122,12 @@ void seq_kmeans(const double* datapoints, double* centroids, int N, int K, unsig
 
     // double *centroids_row_major = (double*)malloc(K * D * sizeof(double));
     // col_to_row_major<double>(centroids, centroids_row_major, K, D);
+    auto visualizer = VisualizerFactory::create(VisualizerFactory::Type::CPU_type, D);
+    if (visualizer && visualizer->canVisualize(D))
+    {
+        visualizer->visualize(datapoints, assignments, N, K, D);
+    }
+
 
     // free(centroids);
     free(newCentroids);

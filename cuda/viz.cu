@@ -1,7 +1,7 @@
 #include "viz.cuh"
 
 
-__global__ void fillVBOKernel(const double* points, int* assignments, int N, int K, float minx, float maxx, float miny, float maxy, float minz, float maxz, float* outPos, unsigned char* outCol)
+__global__ void fillVBOKernel(const double* points, const unsigned char* assignments, int N, int K, float minx, float maxx, float miny, float maxy, float minz, float maxz, float* outPos, unsigned char* outCol)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= N) return;
@@ -15,7 +15,7 @@ __global__ void fillVBOKernel(const double* points, int* assignments, int N, int
     outPos[idx * D_VIZ + 0] = nx;
     outPos[idx * D_VIZ + 1] = ny;
     outPos[idx * D_VIZ + 2] = nz;
-    int cluster = assignments[idx];
+    unsigned char cluster = assignments[idx];
     unsigned char r = (unsigned char)((cluster * 37) % 256);
     unsigned char g = (unsigned char)((cluster * 91) % 256);
     unsigned char b = (unsigned char)((cluster * 53) % 256);
@@ -166,7 +166,7 @@ void scrollCallback(GLFWwindow* window, double xoffset, double yoffset)
 }
 
 // int render(const double* points, const double* d_points, int* d_assignments, int N, int K) {
-int render(const double* d_points, int* d_assignments, int N, int K, float minx, float maxx, float miny, float maxy, float minz, float maxz)
+int render(const double* d_points, const unsigned char* d_assignments, int N, int K, float minx, float maxx, float miny, float maxy, float minz, float maxz)
 {
     // float minx, maxx, miny, maxy, minz, maxz;
     // const std::vector<double> vec_points(points, points + N * D_VIZ);

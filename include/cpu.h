@@ -1,9 +1,13 @@
+#pragma once
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <float.h>
 #include <string.h>
 
 #include "timer.h"
+// #include "enums.h"
+#include "visualizer.cuh"
 
 #define MAX_ITERATIONS 100
 

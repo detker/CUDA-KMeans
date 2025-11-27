@@ -47,7 +47,7 @@ __global__ void compute_clusters(const double* datapoints, double *centroids,
     if (idx < N)
     {
         double minDistance = DEVICE_INF;
-        unsigned char bestCluster = 0;
+        unsigned char bestCluster;
 
         for (int k = 0; k < K; k++) {
             // double distance;
@@ -305,6 +305,11 @@ void kmeans_host(const double* datapoints, double* centroids,
     //     compute_bounds(datapoints, N, minx, maxx, miny, maxy, minz, maxz);
     //     render(deviceDatapoints, deviceAssignments, N, K, minx, maxx, miny, maxy, minz, maxz);
     // }
+    auto visualizer = VisualizerFactory::create(VisualizerFactory::Type::GPU_type, D);
+    if (visualizer && visualizer->canVisualize(D))
+    {
+        visualizer->visualize(deviceDatapoints, deviceAssignments, N, K, D);
+    }
 
     CUDA_CHECK(cudaMemcpy((void*)assignments, (const void*)deviceAssignments, assignmentsSize, cudaMemcpyDeviceToHost));
 
