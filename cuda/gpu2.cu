@@ -7,14 +7,14 @@ struct AssignAndCheckChangedFunctor
     int N;
     double* points;
     double* centroids;
-    int* assignments;
-    AssignAndCheckChangedFunctor(double *points_ptr, double* centroids_ptr, int* assignments_ptr, int n, int k) : points(points_ptr), centroids(centroids_ptr), assignments(assignments_ptr), N(n), K(k) {}
+    unsigned char* assignments;
+    AssignAndCheckChangedFunctor(double *points_ptr, double* centroids_ptr, unsigned char* assignments_ptr, int n, int k) : points(points_ptr), centroids(centroids_ptr), assignments(assignments_ptr), N(n), K(k) {}
 
     __host__ __device__
     thrust::tuple<int,int> operator()(int idx) const
     {
         // int base = idx * D;
-		int best_cluster = 0;
+		unsigned char best_cluster;
 		double min_distance = DBL_MAX;
         for (int k = 0; k < K; ++k)
         {
@@ -41,7 +41,7 @@ struct AssignAndCheckChangedFunctor
 
 template<int D>
 void thrust_kmeans_host(const double* datapoints, double* centroids,
-    int N, int K, int* assignments, TimerManager *tm)
+    int N, int K, unsigned char* assignments, TimerManager *tm)
 {
     TimerGPU timerGPU;
     tm->SetTimer(&timerGPU);
@@ -72,8 +72,8 @@ void thrust_kmeans_host(const double* datapoints, double* centroids,
     //     });
 
     thrust::device_vector<double> newCentroids(K*D, 0.0);
-    thrust::device_vector<int> d_assignments(N, 0);
-	thrust::device_vector<int> d_oldAssignments(N, 0);
+    thrust::device_vector<unsigned char> d_assignments(N, 0);
+	thrust::device_vector<unsigned char> d_oldAssignments(N, 0);
     thrust::device_vector<int> d_assignmentChanged(N, 0);
 
     unsigned int delta = N;
@@ -127,7 +127,7 @@ void thrust_kmeans_host(const double* datapoints, double* centroids,
             auto zipped_in = thrust::make_zip_iterator(thrust::make_tuple(pointsAlongDim.begin(), ones.begin()));
 
             tm->Start();
-            thrust::reduce_by_key(d_assignments.begin(), d_assignments.end(), zipped_in, clustersIdxs.begin(), zipped, thrust::equal_to<int>(), binary_op);
+            thrust::reduce_by_key(d_assignments.begin(), d_assignments.end(), zipped_in, clustersIdxs.begin(), zipped, thrust::equal_to<unsigned char>(), binary_op);
             tm->Stop();
 
             double* sums_ptr = thrust::raw_pointer_cast(clusterSums.data());
@@ -172,7 +172,7 @@ void thrust_kmeans_host(const double* datapoints, double* centroids,
 }
 
 // Type alias to reduce verbosity
-using KMeansFunc = void(const double*, double*, int, int, int*, TimerManager*);
+using KMeansFunc = void(const double*, double*, int, int, unsigned char*, TimerManager*);
 
 // Explicit template instantiations for dimensions 1-20
 template KMeansFunc thrust_kmeans_host<1>;

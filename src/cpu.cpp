@@ -17,13 +17,13 @@ double compute_distance_l2(const double* point1, const double* point2)
 
 template<int D>
 void compute_clusters(const double* datapoints, double *clusters, int N, int K,
-    int* assignments, int *delta)
+    unsigned char* assignments, int *delta)
 {
     *delta = 0;
     for (int n = 0; n < N; n++)
     {
         // const double *current_point = datapoints + n * D;
-        int nearest_cluster = -1;
+        unsigned char nearest_cluster;
         double min_distance = DBL_MAX;
 
         for(int k=0; k<K; ++k)
@@ -55,11 +55,11 @@ void compute_clusters(const double* datapoints, double *clusters, int N, int K,
 }
 
 template<int D>
-void scatter_clusters(const double* datapoints, double *centroids, int N, int K, int* assignments, double *newCentroids, int *newCentroidsSize)
+void scatter_clusters(const double* datapoints, double *centroids, int N, int K, unsigned char* assignments, double *newCentroids, int *newCentroidsSize)
 {
     for (int n = 0; n < N; n++)
     {
-        int cluster_id = assignments[n];
+        unsigned char cluster_id = assignments[n];
         // const double *current_point = datapoints + n * D;
         #pragma unroll
         for (int d = 0; d < D; d++)
@@ -86,7 +86,7 @@ void scatter_clusters(const double* datapoints, double *centroids, int N, int K,
 }
 
 template<int D>
-void seq_kmeans(const double* datapoints, double* centroids, int N, int K, int* assignments, TimerManager* tm)
+void seq_kmeans(const double* datapoints, double* centroids, int N, int K, unsigned char* assignments, TimerManager* tm)
 {
     TimerCPU timerCPU;
     tm->SetTimer(&timerCPU);
@@ -128,7 +128,7 @@ void seq_kmeans(const double* datapoints, double* centroids, int N, int K, int* 
 }
 
 
-using KMeansFunc = void(const double*, double*, int, int, int*, TimerManager*);
+using KMeansFunc = void(const double*, double*, int, int, unsigned char*, TimerManager*);
 
 template KMeansFunc seq_kmeans<1>;
 template KMeansFunc seq_kmeans<2>;

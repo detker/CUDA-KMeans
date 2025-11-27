@@ -28,7 +28,7 @@ void load_bin_data(Dataset* dataset, const char* filename);
 
 void load_txt_data(Dataset* dataset, const char* filename);
 
-void save_output(double** centroids, int** assignments, Dataset* dataset, char* output_path);
+void save_output(double** centroids, unsigned char** assignments, Dataset* dataset, char* output_path);
 
 void parse_args(int argc, char** argv, unsigned char* data_format, unsigned char* compute_method, char** data_path, char** output_path);
 

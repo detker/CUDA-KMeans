@@ -140,7 +140,7 @@ void load_bin_data(Dataset* dataset, const char* filename)
 // }
 
 
-void save_output(double** centroids, int** assignments, Dataset* dataset, char* output_path)
+void save_output(double** centroids, unsigned char** assignments, Dataset* dataset, char* output_path)
 {
     FILE* file = fopen(output_path, "w");
     if (!file) ERR("fopen failed.");
@@ -220,8 +220,10 @@ void col_to_row_major(const T *col_major, T *row_major, int N, int D)
 template void col_to_row_major<double>(const double *col_major, double *row_major, int N, int D);
 template void col_to_row_major<int>(const int *col_major, int *row_major, int N, int D);
 
+//TODO: make it work for column major, now its only for row major
 void compute_bounds(const double *pts, int N, float &minx, float &maxx, float &miny, float &maxy, float &minz, float &maxz)
 {
+    minx = (float)pts[0];
     maxx = (float)pts[0];
     miny = (float)pts[1];
     maxy = (float)pts[1];

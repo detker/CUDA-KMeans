@@ -22,4 +22,4 @@
 // Forward declaration
 template<int D>
 void thrust_kmeans_host(const double* datapoints, double* centroids,
-    int N, int K, int* assignments, TimerManager *tm);
+    int N, int K, unsigned char* assignments, TimerManager *tm);

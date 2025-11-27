@@ -48,7 +48,7 @@ int main(int argc, char** argv)
     //}
 
     double* centroids = (double*)malloc(dataset.K * dataset.D * sizeof(double));
-    int* assignments = (int*)malloc(dataset.N * sizeof(int));
+    unsigned char* assignments = (unsigned char*)malloc(dataset.N * sizeof(unsigned char));
 	if (!centroids || !assignments) ERR("malloc centroids/assignments failed.");
 
     // if (compute_method == GPU1)

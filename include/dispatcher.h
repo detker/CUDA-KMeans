@@ -20,7 +20,7 @@ struct MakeDimSeq<0, Dims...> {
 template<int D>
 struct KMeansDispatcher 
 {
-    static void dispatch(const double *datapoints, double *centroids, int *assignments,
+    static void dispatch(const double *datapoints, double *centroids, unsigned char *assignments,
                          int N, int K, unsigned char compute_method,
                          TimerManager *tm) 
     {
@@ -83,7 +83,7 @@ struct KMeansLauncher
 {
     const double *datapoints;
     double *centroids;
-    int *assignments;
+    unsigned char *assignments;
     int N; // number of datapoints
     int K; // number of centroids
     unsigned char compute_method;
@@ -96,7 +96,7 @@ struct KMeansLauncher
     }
 };
 
-void RunKMeans(const double *datapoints, double *centroids, int *assignments,
+void RunKMeans(const double *datapoints, double *centroids, unsigned char *assignments,
                int N, int K, int D, unsigned char compute_method,
                TimerManager *tm) 
 {

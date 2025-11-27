@@ -21,7 +21,7 @@ __device__ __constant__ double DEVICE_INF = DBL_MAX;
 // Forward declaration
 template<int D>
 void kmeans_host(const double* datapoints, double* centroids,
-    int N, int K, int* assignments, TimerManager *tm);
+    int N, int K, unsigned char* assignments, TimerManager *tm);
 
 template<int D>
 __global__ void update_centroids(double* centroids, const double* newClusters, 
@@ -30,10 +30,9 @@ __global__ void update_centroids(double* centroids, const double* newClusters,
 template<int D>
 __global__ void compute_clusters(const double* datapoints, double *centroids,
     int N, int K,
-    int* assignments, unsigned int* assignmentsChanged, double* newClusters, int* clustersSizes);
+    unsigned char* assignments, unsigned int* assignmentsChanged, double* newClusters, int* clustersSizes);
 
 template<int D>
-__global__ void scatter_clusters(const double* datapoints, const int* assignments,
+__global__ void scatter_clusters(const double* datapoints, const unsigned char* assignments,
     int N, int K,
     double* newClusters, int* clustersSizes, double* centroids);
-
