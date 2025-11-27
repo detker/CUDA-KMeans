@@ -16,6 +16,7 @@
 #include "timer.h"
 #include "utils.h"
 #include "visualizer.cuh"
+#include "enum_types.h"
 
 
 #define MAX_ITERATIONS 100

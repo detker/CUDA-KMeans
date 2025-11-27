@@ -98,17 +98,18 @@ void CPUVisualizer::visualize(const double* datapoints, const unsigned char* ass
     render(d_datapoints, d_assignments, N, K, minx, maxx, miny, maxy, minz, maxz);
 }
 
-std::unique_ptr<IVisualizer> VisualizerFactory::create(Type type, int D)
+std::unique_ptr<IVisualizer> VisualizerFactory::create(ComputeType compute_method, int D)
 {
-    switch(type) {
-        case Type::CPU_type:
-            if (D == 3) {
-                return std::make_unique<CPUVisualizer>();
-            }
-            break;
-        case Type::GPU_type:
+    switch(compute_method) {
+        case ComputeType::GPU1:
+        case ComputeType::GPU2:
             if (D == 3) {
                 return std::make_unique<GPUVisualizer>();
+            }
+            break;
+        case ComputeType::CPU:
+            if (D == 3) {
+                return std::make_unique<CPUVisualizer>();
             }
             break;
     }

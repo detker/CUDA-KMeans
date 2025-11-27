@@ -6,7 +6,7 @@
 #include <string.h>
 
 #include "timer.h"
-// #include "enums.h"
+#include "enum_types.h"
 #include "visualizer.cuh"
 
 #define MAX_ITERATIONS 100

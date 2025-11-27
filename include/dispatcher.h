@@ -6,6 +6,7 @@
 #include "cpu.h"
 #include "timer.h"
 #include "utils.h"
+#include "enum_types.h"
 
 // compile-time sequence for dimension iteration
 template<int... Dims>
@@ -23,15 +24,15 @@ template<int D>
 struct KMeansDispatcher 
 {
     static void dispatch(const double *datapoints, double *centroids, unsigned char *assignments,
-                         int N, int K, unsigned char compute_method,
+                         int N, int K, ComputeType compute_method,
                          TimerManager *tm) 
     {
-        if (compute_method == GPU1)
+        if (compute_method == ComputeType::GPU1)
         {
             printf("Running K-means on gpu1 (parallel, custom kernels)...\n");
             kmeans_host<D>(datapoints, centroids, N, K, assignments, tm);
         }
-        else if (compute_method == GPU2)
+        else if (compute_method == ComputeType::GPU2)
         {
             printf("Running K-means on gpu2 (parallel, thrust)...\n");
             thrust_kmeans_host<D>(datapoints, centroids, N, K, assignments, tm);
@@ -88,7 +89,7 @@ struct KMeansLauncher
     unsigned char *assignments;
     int N; // number of datapoints
     int K; // number of centroids
-    unsigned char compute_method;
+    ComputeType compute_method;
     TimerManager *tm;
 
     template <int D>
@@ -99,7 +100,7 @@ struct KMeansLauncher
 };
 
 void RunKMeans(const double *datapoints, double *centroids, unsigned char *assignments,
-               int N, int K, int D, unsigned char compute_method,
+               int N, int K, int D, ComputeType compute_method,
                TimerManager *tm) 
 {
     static constexpr int MAX_DIM = 20;

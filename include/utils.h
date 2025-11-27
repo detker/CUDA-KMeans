@@ -7,12 +7,13 @@
 #include <math.h>
 
 #include "error_utils.h"
+#include "enum_types.h"
 
-#define CPU 0
-#define GPU1 1
-#define GPU2 2
-#define TXT_DATA_FORMAT 0
-#define BINARY_DATA_FORMAT 1
+// #define CPU 0
+// #define GPU1 1
+// #define GPU2 2
+// #define TXT_DATA_FORMAT 0
+// #define BINARY_DATA_FORMAT 1
 
 typedef struct {
     //std::vector<double> datapoints;
@@ -30,7 +31,8 @@ void load_txt_data(Dataset* dataset, const char* filename);
 
 void save_output(double** centroids, unsigned char** assignments, Dataset* dataset, char* output_path);
 
-void parse_args(int argc, char** argv, unsigned char* data_format, unsigned char* compute_method, char** data_path, char** output_path);
+// void parse_args(int argc, char** argv, unsigned char* data_format, unsigned char* compute_method, char** data_path, char** output_path);
+void parse_args(int argc, char** argv, DataType *data_format, ComputeType* compute_method, char** data_path, char** output_path);
 
 template<typename T>
 void row_to_col_major(const T *row_major, T *col_major, int N, int D);

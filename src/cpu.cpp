@@ -122,7 +122,7 @@ void seq_kmeans(const double* datapoints, double* centroids, int N, int K, unsig
 
     // double *centroids_row_major = (double*)malloc(K * D * sizeof(double));
     // col_to_row_major<double>(centroids, centroids_row_major, K, D);
-    auto visualizer = VisualizerFactory::create(VisualizerFactory::Type::CPU_type, D);
+    auto visualizer = VisualizerFactory::create(ComputeType::CPU, D);
     if (visualizer && visualizer->canVisualize(D))
     {
         visualizer->visualize(datapoints, assignments, N, K, D);

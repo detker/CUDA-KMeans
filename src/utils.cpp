@@ -159,7 +159,7 @@ void save_output(double** centroids, unsigned char** assignments, Dataset* datas
     fclose(file);
 }
 
-void parse_args(int argc, char** argv, unsigned char* data_format, unsigned char* compute_method, char** data_path, char** output_path)
+void parse_args(int argc, char** argv, DataType* data_format, ComputeType* compute_method, char** data_path, char** output_path)
 {
     if (argc != 5) {
         usage(argv[0]);
@@ -167,25 +167,25 @@ void parse_args(int argc, char** argv, unsigned char* data_format, unsigned char
 
     if (strcmp(argv[1], "txt") == 0)
     {
-        *data_format = TXT_DATA_FORMAT;
+        *data_format = DataType::TXT;
     }
     else if (strcmp(argv[1], "bin") == 0)
     {
-        *data_format = BINARY_DATA_FORMAT;
+        *data_format = DataType::BIN;
     }
     else usage(argv[0]);
 
     if (strcmp(argv[2], "gpu1") == 0)
     {
-        *compute_method = GPU1;
+        *compute_method = ComputeType::GPU1;
     }
     else if (strcmp(argv[2], "gpu2") == 0)
     {
-        *compute_method = GPU2;
+        *compute_method = ComputeType::GPU2;
     }
     else if (strcmp(argv[2], "cpu") == 0)
     {
-        *compute_method = CPU;
+        *compute_method = ComputeType::CPU;
     }
     else usage(argv[0]);
 

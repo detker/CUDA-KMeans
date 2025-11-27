@@ -8,10 +8,11 @@
 #include "error_utils.h"
 #include "timer.h"
 #include "dispatcher.h"
+#include "enum_types.h"
 
-void print_info(Dataset* d, int data_format)
+void print_info(Dataset* d, DataType data_format)
 {
-    printf("Data format: %s\n", (data_format == BINARY_DATA_FORMAT) ? "binary" : "text");
+    printf("Data format: %s\n", (data_format == DataType::BIN) ? "binary" : "text");
     printf("Number of data points: %d\n", d->N);
     printf("Dimensionality: %d\n", d->D);
 	printf("Number of clusters: %d\n", d->K);
@@ -23,7 +24,9 @@ int main(int argc, char** argv)
     TimerManager tm;
 	tm.SetTimer(&timerCPU);
 
-	unsigned char data_format, compute_method;
+	// unsigned char data_format, compute_method;
+    DataType data_format;
+    ComputeType compute_method;
     char* data_path, *output_path;
     Dataset dataset;
     
@@ -31,7 +34,7 @@ int main(int argc, char** argv)
 
     printf("Reading data to CPU...\n");
     tm.Start();
-    if (data_format == TXT_DATA_FORMAT) load_txt_data(&dataset, data_path);
+    if (data_format == DataType::TXT) load_txt_data(&dataset, data_path);
     else load_bin_data(&dataset, data_path);
     tm.Stop();
     print_info(&dataset, data_format);
@@ -68,6 +71,7 @@ int main(int argc, char** argv)
     // }
 
     RunKMeans(dataset.datapoints, centroids, assignments, dataset.N, dataset.K, dataset.D, compute_method, &tm);
+    // RunKMeans(dataset, centroids, assignments, compute_method, &tm);
 
     float time_computing = tm.TotalElapsedSeconds() - time_load_data;
 	printf("K-means computation time: %.4f seconds\n", time_computing);

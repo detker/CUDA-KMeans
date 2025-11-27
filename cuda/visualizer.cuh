@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include "enum_types.h"
 
 class IVisualizer
 {
@@ -12,13 +13,9 @@ class IVisualizer
 class VisualizerFactory 
 {
     public:
-        enum class Type 
-        {
-            CPU_type,
-            GPU_type
-        };
+        ComputeType compute_method;
 
-    static std::unique_ptr<IVisualizer> create(Type type, int D);
+    static std::unique_ptr<IVisualizer> create(ComputeType type, int D);
 };
 
 class GPUVisualizer : public IVisualizer

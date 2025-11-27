@@ -305,7 +305,7 @@ void kmeans_host(const double* datapoints, double* centroids,
     //     compute_bounds(datapoints, N, minx, maxx, miny, maxy, minz, maxz);
     //     render(deviceDatapoints, deviceAssignments, N, K, minx, maxx, miny, maxy, minz, maxz);
     // }
-    auto visualizer = VisualizerFactory::create(VisualizerFactory::Type::GPU_type, D);
+    auto visualizer = VisualizerFactory::create(ComputeType::GPU1, D);
     if (visualizer && visualizer->canVisualize(D))
     {
         visualizer->visualize(deviceDatapoints, deviceAssignments, N, K, D);
