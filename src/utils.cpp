@@ -72,7 +72,6 @@ void load_bin_data(Dataset* dataset, const char* filename)
     fclose(file);
 }
 
-// save centroids and assignments to a text file
 void save_output(double** centroids, unsigned char** assignments, Dataset* dataset, char* output_path)
 {
     FILE* file = fopen(output_path, "w");
