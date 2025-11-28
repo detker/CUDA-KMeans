@@ -8,7 +8,7 @@ __global__ void fillVBOKernel(const double* points, const unsigned char* assignm
     double px = points[0*N + idx];
     double py = points[1*N + idx];
     double pz = points[2*N + idx];
-    // Normalize point positions to [-1, 1] cube
+    // normalize point positions to [-1, 1] cube
     float nx = (maxx > minx) ? (float)((px - minx) / (maxx - minx) * 2.0 - 1.0) : 0.0f;
     float ny = (maxy > miny) ? (float)((py - miny) / (maxy - miny) * 2.0 - 1.0) : 0.0f;
     float nz = (maxz > minz) ? (float)((pz - minz) / (maxz - minz) * 2.0 - 1.0) : 0.0f;
@@ -72,14 +72,6 @@ static Mat4 rotateY(float a) {
     return M;
 }
 
-// static Mat4 scale(float s) {
-//     Mat4 M = Mat4::identity();
-//     M.m[0] = M.m[5] = M.m[10] = s;
-//     return M;
-// }
-
-// ---------------------------- GLSL shader sources ----------------------------
-
 // vertex shader for points: takes position (vec3) and color (vec4), applies MVP and sets point size
 const char* vs_src =
 "#version 330 core\n"                                
@@ -118,7 +110,6 @@ static GLuint compileShader(GLenum type, const char* src)
     return shader;
 }
 
-// ---------------------------- Camera controls ----------------------------
 static double lastX = 0.0, lastY = 0.0;
 static bool dragging = false;
 static float yaw = 0.5f, pitch = -0.3f;
@@ -165,13 +156,8 @@ void scrollCallback(GLFWwindow* window, double xoffset, double yoffset)
     if (distanceCamera > 50.0f) distanceCamera = 50.0f;
 }
 
-// int render(const double* points, const double* d_points, int* d_assignments, int N, int K) {
 int render(const double* d_points, const unsigned char* d_assignments, int N, int K, float minx, float maxx, float miny, float maxy, float minz, float maxz)
 {
-    // float minx, maxx, miny, maxy, minz, maxz;
-    // const std::vector<double> vec_points(points, points + N * D_VIZ);
-    // compute_bounds(vec_points, N, minx, maxx, miny, maxy, minz, maxz);
-
     if (!glfwInit()) {
         ERR("Failed to innit GLFW");
     }

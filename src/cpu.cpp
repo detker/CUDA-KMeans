@@ -2,33 +2,17 @@
 
 
 template<int D>
-double compute_distance_l2(const double* point1, const double* point2)
-{
-    double sum = 0.0;
-    #pragma unroll
-    for (int d = 0; d < D; d++)
-    {
-        double diff = point1[d] - point2[d];
-        sum += diff * diff;
-    }
-    return sum;
-}
-
-
-template<int D>
 void compute_clusters(const double* datapoints, double *clusters, int N, int K,
     unsigned char* assignments, int *delta)
 {
     *delta = 0;
     for (int n = 0; n < N; n++)
     {
-        // const double *current_point = datapoints + n * D;
         unsigned char nearest_cluster;
         double min_distance = DBL_MAX;
 
         for(int k=0; k<K; ++k)
         {
-            // const double *current_cluster = clusters + k * D;
             double distance = 0.0;
 
             #pragma unroll
@@ -38,7 +22,6 @@ void compute_clusters(const double* datapoints, double *clusters, int N, int K,
                 distance += diff * diff;
             }
 
-            // double distance = compute_distance_l2<D>(current_point, current_cluster);
             if (distance < min_distance)
             {
                 min_distance = distance;
@@ -60,7 +43,6 @@ void scatter_clusters(const double* datapoints, double *centroids, int N, int K,
     for (int n = 0; n < N; n++)
     {
         unsigned char cluster_id = assignments[n];
-        // const double *current_point = datapoints + n * D;
         #pragma unroll
         for (int d = 0; d < D; d++)
         {
@@ -76,8 +58,6 @@ void scatter_clusters(const double* datapoints, double *centroids, int N, int K,
         {
             if (newCentroidsSize[k] > 0)
                 centroids[k * D + d] = newCentroids[k * D + d] / newCentroidsSize[k];
-            // else
-            //     centroids[k * D + d] = 0.0;
 
             newCentroids[k * D + d] = 0.0;
         }
@@ -99,7 +79,6 @@ void seq_kmeans(const double* datapoints, double* centroids, int N, int K, unsig
     memset(centroids, 0, K * D * sizeof(double));
     memset(assignments, 0, N * sizeof(unsigned char));
     for(int k=0; k<K; k++) {
-        // if(k >= N) break;
         #pragma unroll
         for(int d=0; d<D; d++) {
             centroids[k * D + d] = datapoints[d * N + k];
@@ -126,8 +105,6 @@ void seq_kmeans(const double* datapoints, double* centroids, int N, int K, unsig
     //     visualizer->visualize(datapoints, assignments, N, K, D);
     // }
 
-
-    // free(centroids);
     free(newCentroids);
     free(newCentroidsSize);
 }

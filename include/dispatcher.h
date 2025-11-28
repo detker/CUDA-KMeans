@@ -8,7 +8,6 @@
 #include "utils.h"
 #include "enum_types.h"
 
-// compile-time sequence for dimension iteration
 template<int... Dims>
 struct DimSeq {};
 
@@ -45,7 +44,6 @@ struct KMeansDispatcher
     }
 };
 
-// Runtime dimension dispatcher using template recursion
 template<int CurrentD, int MaxD>
 struct RuntimeDispatcher
 {
@@ -87,8 +85,8 @@ struct KMeansLauncher
     const double *datapoints;
     double *centroids;
     unsigned char *assignments;
-    int N; // number of datapoints
-    int K; // number of centroids
+    int N;
+    int K;
     ComputeType compute_method;
     TimerManager *tm;
 

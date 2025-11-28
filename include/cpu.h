@@ -12,9 +12,6 @@
 #define MAX_ITERATIONS 100
 
 template<int D>
-double compute_distance_l2(const double* point1, const double* point2);
-
-template<int D>
 void compute_clusters(const double* datapoints, double *clusters, int N, int K, unsigned char* assignments, int *delta);
 
 template<int D>

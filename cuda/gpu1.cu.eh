@@ -2,7 +2,6 @@
 
 #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600
 #else
-// atomicAdd for double for pre-Pascal architectures
 __device__ double atomicAdd(double* address, double val)
 {
     unsigned long long int* address_as_ull = (unsigned long long int*)address;
@@ -18,22 +17,16 @@ __device__ double atomicAdd(double* address, double val)
 }
 #endif
 
-
 template<int D>
 __global__ void compute_clusters(const double* datapoints, double *centroids,
     int N, int K,
     unsigned char* assignments, unsigned int* assignmentsChanged, double* newClusters, int* clustersSizes)
 {
-    // extern __shared__ char sharedMem[];
-    // unsigned int* changedFlag = (unsigned int*)sharedMem;
-    // double* clusters = (double*)(sharedMem + sizeof(unsigned int) * 8); // max 256 threads -> 8 warps
-
     extern __shared__ char sharedMem[];
 
-    unsigned int *changedFlag = (unsigned int *)sharedMem;
+    unsigned int* changedFlag = (unsigned int*)sharedMem;
 
-    size_t offset = ((sizeof(unsigned int) * 8 + 8 - 1) / 8) * 8; // align to double, we have 256 threads -> 8 warps
-    double *clusters = (double*)(sharedMem + offset);
+    double* clusters = (double*)(sharedMem + sizeof(unsigned int) * 32);
 
     if (threadIdx.x < K)
     {
@@ -49,10 +42,12 @@ __global__ void compute_clusters(const double* datapoints, double *centroids,
             {
                 value = centroids[d*K + threadIdx.x];
             }
+            // clusters[d * K + threadIdx.x] = centroids[d*K + threadIdx.x];
             clusters[d * K + threadIdx.x] = value;
-            if(blockIdx.x == 0) centroids[d*K + threadIdx.x] = value; // at most 4 bank conflicts, happening only in first warp - negligible
+            if(blockIdx.x == 0) centroids[d*K + threadIdx.x] = value;
         }
     }
+    // changedFlag[threadIdx.x] = 0;
     __syncthreads();
 
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -69,7 +64,7 @@ __global__ void compute_clusters(const double* datapoints, double *centroids,
             #pragma unroll
             for(int d=0; d < D; ++d)
             {
-                double diff = datapoints[d * N + idx] - clusters[d * K + k]; //broadcast happens here - no conflicts
+                double diff = datapoints[d * N + idx] - clusters[d * K + k];
                 sum += diff * diff;
             }
             if (sum < minDistance) {
@@ -90,6 +85,7 @@ __global__ void compute_clusters(const double* datapoints, double *centroids,
         #else
             changed += __shfl_down(changed, offset);
         #endif
+        // changed += __shfl_down_sync(0xffffffff, changed, offset);
     }
     // lane 0 has the sum from warp
 
@@ -113,6 +109,7 @@ __global__ void compute_clusters(const double* datapoints, double *centroids,
             #else
                 warpSum += __shfl_down(warpSum, offset);
             #endif
+            // warpSum += __shfl_down_sync(0xffffffff, warpSum, offset);
         }
 
         if(threadIdx.x == 0) 
@@ -127,53 +124,109 @@ __global__ void scatter_clusters(const double* datapoints, const unsigned char* 
     int N, int K,
     double* newClusters, int* clustersSizes)
 {
-    extern __shared__ char shmm[];
+    int blocksPerCluster = gridDim.x / K;
+    int k = blockIdx.x / blocksPerCluster;
+    int blockId = blockIdx.x % blocksPerCluster;
 
-    unsigned int *shmSizes = (unsigned int *)shmm;
+    const int SMEM_THREADS = 128;  // Use half the threads for shared memory
+    
+    extern __shared__ double shmm[];
+    double *localSums = shmm;  // D * SMEM_THREADS
+    unsigned int *localSizes = (unsigned int *)(shmm + SMEM_THREADS * D);
+    
+    int pointsPerBlock = (N + blocksPerCluster - 1) / blocksPerCluster;
+    int startIdx = blockId * pointsPerBlock;
+    int endIdx = min(startIdx + pointsPerBlock, N);
 
-    size_t offset = ((sizeof(unsigned int) * K + 8 - 1) / 8) * 8; // align to double
-    double *shmClusters = (double*)(shmm + offset);
-
-    if(threadIdx.x < K)
+    // Initialize shared memory to zero
+    if(threadIdx.x < SMEM_THREADS)
     {
-        shmSizes[threadIdx.x] = 0;
         #pragma unroll
-        for (int d = 0; d < D; ++d)
+        for(int d = 0; d < D; ++d)
         {
-            // at most 4 bank conflicts, happening only in first warp - negligible
-            shmClusters[d * K + threadIdx.x] = 0.0;
+            localSums[d * SMEM_THREADS + threadIdx.x] = 0.0;
         }
+        localSizes[threadIdx.x] = 0;
     }
-
     __syncthreads();
 
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= N) return;
-
-    unsigned char clusterIdx = assignments[idx];
-
+    // Phase 1: Each thread accumulates in registers
+    double threadSums[D];
     #pragma unroll
-    for (int d = 0; d < D; ++d)
+    for(int d = 0; d < D; ++d)
     {
-        atomicAdd(&shmClusters[d * K + clusterIdx], datapoints[d * N + idx]);
+        threadSums[d] = 0.0;
     }
-    atomicAdd(&shmSizes[clusterIdx], 1);
+    unsigned int threadSize = 0;
 
-
-    if(threadIdx.x < K)
+    for(int idx = startIdx + threadIdx.x; idx < endIdx; idx += blockDim.x)
     {
-        __syncthreads(); // inside if - since volta its clearly safe
-        #pragma unroll
-        for (int d = 0; d < D; ++d)
+        if(assignments[idx] == k)
         {
-            atomicAdd(&newClusters[d * K + threadIdx.x], shmClusters[d * K + threadIdx.x]);
+            #pragma unroll
+            for(int d = 0; d < D; ++d)
+            {
+                threadSums[d] += datapoints[d*N + idx];
+            }
+            ++threadSize;
         }
-        atomicAdd(&clustersSizes[threadIdx.x], shmSizes[threadIdx.x]);
+    }
+
+    // Phase 2: Write to shared memory (only first SMEM_THREADS slots)
+    if(threadIdx.x < SMEM_THREADS)
+    {
+        #pragma unroll
+        for(int d = 0; d < D; ++d)
+        {
+            localSums[d * SMEM_THREADS + threadIdx.x] = threadSums[d];
+        }
+        localSizes[threadIdx.x] = threadSize;
+    }
+    __syncthreads();
+
+    // Phase 3: Upper half threads add to lower half in shared memory
+    if(threadIdx.x >= SMEM_THREADS && threadIdx.x < blockDim.x)
+    {
+        int target = threadIdx.x - SMEM_THREADS;
+        #pragma unroll
+        for(int d = 0; d < D; ++d)
+        {
+            atomicAdd(&localSums[d * SMEM_THREADS + target], threadSums[d]);
+        }
+        atomicAdd(&localSizes[target], threadSize);
+    }
+    __syncthreads();
+
+    // Phase 4: Reduce within shared memory (only first SMEM_THREADS threads)
+    if(threadIdx.x < SMEM_THREADS)
+    {
+        for(int offset = SMEM_THREADS / 2; offset > 0; offset >>= 1)
+        {
+            if(threadIdx.x < offset)
+            {
+                #pragma unroll
+                for(int d = 0; d < D; ++d)
+                {
+                    localSums[d * SMEM_THREADS + threadIdx.x] += 
+                        localSums[d * SMEM_THREADS + threadIdx.x + offset];
+                }
+                localSizes[threadIdx.x] += localSizes[threadIdx.x + offset];
+            }
+            __syncthreads();
+        }
+
+        if(threadIdx.x == 0)
+        {
+            #pragma unroll
+            for(int d = 0; d < D; ++d)
+            {
+                atomicAdd(&newClusters[d*K + k], localSums[0]);
+            }
+            atomicAdd(&clustersSizes[k], localSizes[0]);
+        }
     }
 }
 
-// implementation of GATHER (exchangeble with SCATTER above) - commented out, because of bank conflicts and lower occupancy,
-// as I was terribly scared of penalty points, THOUGH IT OVERALL PERFORMS BETTER IN PRACTICE (ON EXAMPLE DATA UP TO 20% SPEED UP).
 // template<int D>
 // __global__ void scatter_clusters(const double* datapoints, const unsigned char* assignments,
 //     int N, int K,
@@ -185,7 +238,7 @@ __global__ void scatter_clusters(const double* datapoints, const unsigned char* 
 
 //     extern __shared__ double shmm[];
 //     double *localSums = shmm;
-//     uint16_t *localSizes = (uint16_t *)(shmm + blockDim.x * D);
+//     unsigned int *localSizes = (unsigned int *)(shmm + blockDim.x * D);
 //     #pragma unroll
 //     for(int d=0; d < D; ++d)
 //     {
@@ -251,16 +304,18 @@ void kmeans_host(const double* datapoints, double* centroids,
     const double *deviceDatapoints;
     double* deviceCentroids;
     unsigned char* deviceAssignments;
-    double *newClustersDevice;
-    int *clustersSizesDevice;
     size_t datapointsSize = N * D * sizeof(double);
     size_t centroidsSize = K * D * sizeof(double);
     size_t assignmentsSize = N * sizeof(unsigned char);
     size_t clustersSizesSize = K * sizeof(int);
 
+    double *newClustersDevice;
+    int *clustersSizesDevice;
     CUDA_CHECK(cudaMalloc((void**)&newClustersDevice, centroidsSize));
     CUDA_CHECK(cudaMalloc((void**)&clustersSizesDevice, clustersSizesSize));
+
     CUDA_CHECK(cudaMalloc((void**)&deviceDatapoints, datapointsSize));
+
     CUDA_CHECK(cudaMalloc((void**)&deviceCentroids, centroidsSize));
     CUDA_CHECK(cudaMalloc((void**)&deviceAssignments, assignmentsSize));
 
@@ -277,12 +332,18 @@ void kmeans_host(const double* datapoints, double* centroids,
 
     CUDA_CHECK(cudaMemcpy((void*)deviceCentroids, (const void*)centroids, centroidsSize, cudaMemcpyHostToDevice));
 
+    // Initialize assignments
     CUDA_CHECK(cudaMemset((void*)deviceAssignments, 0, assignmentsSize));
 
     CUDA_CHECK(cudaMemcpy((void*)newClustersDevice, (const void*)centroids, centroidsSize, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemset((void*)clustersSizesDevice, 0, clustersSizesSize));
 
-    unsigned delta = N;    
+    unsigned delta = N;
+
+    int threadsPerBlock = 256;
+    int blocksPerGrid = (N + threadsPerBlock - 1) / threadsPerBlock;
+    int sharedMemSize = sizeof(unsigned int) * 32 + sizeof(double) * K * D;
+    
     unsigned int* deviceDelta;
     CUDA_CHECK(cudaMalloc((void**)&deviceDelta, sizeof(unsigned int)));
     CUDA_CHECK(cudaMemset((void*)deviceDelta, 0, sizeof(unsigned int)));
@@ -290,49 +351,44 @@ void kmeans_host(const double* datapoints, double* centroids,
     cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, 0);
     
-    // int blockSize = 256;  
-    // int sharedMemPerBlock = ((sizeof(unsigned int)*8 + 8 - 1)/8) * 8 + 20 * 20 * sizeof(double);
+    int blockSize = 256;  
+    int sharedMemPerBlock = 32 * sizeof(unsigned int) + 20 * 20 * sizeof(double);
     
-    // int numBlocksPerSM;
-    // cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-    //     &numBlocksPerSM,
-    //     compute_clusters<20>,
-    //     blockSize,
-    //     sharedMemPerBlock
-    // );
+    int numBlocksPerSM;
+    cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+        &numBlocksPerSM,
+        compute_clusters<20>,
+        blockSize,
+        sharedMemPerBlock
+    );
     
-    // float occupancy = (numBlocksPerSM * blockSize) / 
-    //                   (float)prop.maxThreadsPerMultiProcessor;
+    float occupancy = (numBlocksPerSM * blockSize) / 
+                      (float)prop.maxThreadsPerMultiProcessor;
     
-    // printf("Theoretical Occupancy: %.2f%%\n", occupancy * 100);
-    // printf("Blocks per SM: %d\n", numBlocksPerSM);
-    // printf("Max threads per SM: %d\n", prop.maxThreadsPerMultiProcessor);
+    printf("Theoretical Occupancy: %.2f%%\n", occupancy * 100);
+    printf("Blocks per SM: %d\n", numBlocksPerSM);
+    printf("Max threads per SM: %d\n", prop.maxThreadsPerMultiProcessor);
 
 
-    // int numThreads = 256;
-    // int sharedMemSizeScatter = sizeof(double) * 20 *  numThreads + sizeof(uint16_t) * numThreads;
-    // int numThreads = 256;
-    // int numBlocks = (N + numThreads - 1) / numThreads;
-    // int sharedMemSizeScatter = ((sizeof(unsigned int) * 20 + 8 - 1) / 8) * 8 + sizeof(double) * 20 * 20;
+    int numThreads = 256;
+    int numBlocks = (N + numThreads - 1) / numThreads;
+    int blocksPerCluster = (numBlocks + 20 - 1) / 20;
+    int totalBlocks = blocksPerCluster * 20;
+    int sharedMemSizeScatter = sizeof(double) * 20 * 128 + sizeof(unsigned int) * 128;
 
-    // cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-    //     &numBlocksPerSM,
-    //     scatter_clusters<20>,
-    //     numThreads,
-    //     sharedMemSizeScatter
-    // );
+    cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+        &numBlocksPerSM,
+        scatter_clusters<20>,
+        numThreads,
+        sharedMemSizeScatter
+    );
     
-    // occupancy = (numBlocksPerSM * numThreads) / 
-    //                   (float)prop.maxThreadsPerMultiProcessor;
+    occupancy = (numBlocksPerSM * numThreads) / 
+                      (float)prop.maxThreadsPerMultiProcessor;
     
-    // printf("Theoretical Occupancy: %.2f%%\n", occupancy * 100);
-    // printf("Blocks per SM: %d\n", numBlocksPerSM);
-    // printf("Max threads per SM: %d\n", prop.maxThreadsPerMultiProcessor);
-
-    int threadsPerBlock = 256;
-    int blocksPerGrid = (N + threadsPerBlock - 1) / threadsPerBlock;
-    // int sharedMemSize = sizeof(unsigned int) * 8 + sizeof(double) * K * D;
-    int sharedMemSize = (sizeof(unsigned int)*8 + 8 - 1)/8 * 8 + sizeof(double) * K * D;
+    printf("Theoretical Occupancy: %.2f%%\n", occupancy * 100);
+    printf("Blocks per SM: %d\n", numBlocksPerSM);
+    printf("Max threads per SM: %d\n", prop.maxThreadsPerMultiProcessor);
 
     for (int iter = 0; iter < MAX_ITERATIONS && delta > 0; iter++)
     {
@@ -347,27 +403,19 @@ void kmeans_host(const double* datapoints, double* centroids,
         CUDA_CHECK(cudaMemset((void*)clustersSizesDevice, 0, clustersSizesSize));
 
         CUDA_CHECK(cudaMemcpy((void*)&delta, (const void*)deviceDelta, sizeof(unsigned int), cudaMemcpyDeviceToHost));
+
         CUDA_CHECK(cudaMemset((void*)deviceDelta, 0, sizeof(unsigned int)));
 
-        // commented out code for launching GATHER kernel
-        // int numThreads = 256;
-        // int numBlocks = (N + numThreads - 1) / numThreads;
-        // int blocksPerCluster = (numBlocks + K - 1) / K;
-        // int totalBlocks = blocksPerCluster * K;
-        // int sharedMemSizeScatter = sizeof(double) * D * numThreads + sizeof(uint16_t) * numThreads;
-        // tm->Start();
-        // scatter_clusters<D><< <totalBlocks, numThreads, sharedMemSizeScatter >> > (deviceDatapoints, deviceAssignments,
-        //     N, K,
-        //     newClustersDevice, clustersSizesDevice);
-        // tm->Stop();
-        // CUDA_CHECK(cudaDeviceSynchronize());
-        // CUDA_CHECK(cudaGetLastError());
-
-        int numThreads = prop.major *10 + prop.minor >= 60 ? 128 : 256;
+        int numThreads = 256;
         int numBlocks = (N + numThreads - 1) / numThreads;
-        int sharedMemSizeScatter = ((sizeof(unsigned int) * K + 8 - 1) / 8) * 8 + sizeof(double) * K * D;
+        int blocksPerCluster = (numBlocks + K - 1) / K;
+        int totalBlocks = blocksPerCluster * K;
+        // int sharedMemSizeScatter = sizeof(double) * D * numThreads + sizeof(unsigned int) * numThreads;
+        const int SMEM_THREADS = 128;
+        int sharedMemSizeScatter = sizeof(double) * D * SMEM_THREADS + 
+                                sizeof(unsigned int) * SMEM_THREADS;
         tm->Start();
-        scatter_clusters<D> << <numBlocks, numThreads, sharedMemSizeScatter >> > (deviceDatapoints, deviceAssignments,
+        scatter_clusters<D><< <totalBlocks, numThreads, sharedMemSizeScatter >> > (deviceDatapoints, deviceAssignments,
             N, K,
             newClustersDevice, clustersSizesDevice);
         tm->Stop();
@@ -377,18 +425,18 @@ void kmeans_host(const double* datapoints, double* centroids,
         printf("Iteration: %d, changes: %d\n", iter, delta);
     }
 
-    // visualization when D = 3
-    auto visualizer = VisualizerFactory::create(ComputeType::GPU1, D);
-    if (visualizer && visualizer->canVisualize(D))
-    {
-        visualizer->visualize(deviceDatapoints, deviceAssignments, N, K, D);
-    }
+    // auto visualizer = VisualizerFactory::create(ComputeType::GPU1, D);
+    // if (visualizer && visualizer->canVisualize(D))
+    // {
+    //     visualizer->visualize(deviceDatapoints, deviceAssignments, N, K, D);
+    // }
 
     CUDA_CHECK(cudaMemcpy((void*)assignments, (const void*)deviceAssignments, assignmentsSize, cudaMemcpyDeviceToHost));
 
     double* centroids_col_major = (double*)malloc(centroidsSize);
     if (!centroids_col_major) ERR("malloc centroids_col_major failed.");
     CUDA_CHECK(cudaMemcpy((void*)centroids_col_major, (const void*)deviceCentroids, centroidsSize, cudaMemcpyDeviceToHost));
+
     double *newClusters_col_major = (double*)malloc(centroidsSize);
     if (!newClusters_col_major) ERR("malloc newClusters_col_major failed.");
     CUDA_CHECK(cudaMemcpy((void*)newClusters_col_major, (const void*)newClustersDevice, centroidsSize, cudaMemcpyDeviceToHost));

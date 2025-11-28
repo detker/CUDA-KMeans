@@ -13,7 +13,6 @@ struct AssignAndCheckChangedFunctor
     __host__ __device__
     thrust::tuple<int,int> operator()(int idx) const
     {
-        // int base = idx * D;
 		unsigned char best_cluster;
 		double min_distance = DBL_MAX;
         for (int k = 0; k < K; ++k)
@@ -21,7 +20,6 @@ struct AssignAndCheckChangedFunctor
             double sum = 0.0f;
             #pragma unroll 4
             for (int d = 0; d < D; ++d) {
-                // double diff = points[base + d] - centroids[k * D + d];
                 double diff = points[d * N + idx] - centroids[d * K + k];
                 sum += diff * diff;
             }
@@ -46,14 +44,8 @@ void thrust_kmeans_host(const double* datapoints, double* centroids,
     TimerGPU timerGPU;
     tm->SetTimer(&timerGPU);
 
-    // double *datapoints_col_major = new double[N * D];
     double *centroids_col_major = new double[K * D];
-    // row_to_col_major<double>(datapoints, datapoints_col_major, N, D);
-    // row_to_col_major<double>(datapoints, centroids_col_major, K, D);
-    // thrust::device_vector<double> d_datapoints(datapoints_col_major, datapoints_col_major + N * D);
-    // thrust::device_vector<double> d_datapoints(datapoints_col_major, datapoints_col_major + N * D);
     thrust::device_vector<double> d_datapoints(datapoints, datapoints + N * D);
-    // double *dp = thrust::raw_pointer_cast(d_datapoints.data());
     for (int k = 0; k < K; ++k)
     {
         #pragma unroll 4
@@ -63,14 +55,6 @@ void thrust_kmeans_host(const double* datapoints, double* centroids,
         }
     }
 	thrust::device_vector<double> d_centroids(centroids_col_major, centroids_col_major + K * D);
-    // thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(K * D),
-    //     d_centroids.begin(),
-    //     [=] __device__(int idx) {
-    //         int row = idx / K;
-    //         int col = idx % K;
-    //         return dp[row * N + col];
-    //     });
-
     thrust::device_vector<double> newCentroids(K*D, 0.0);
     thrust::device_vector<unsigned char> d_assignments(N, 0);
 	thrust::device_vector<unsigned char> d_oldAssignments(N, 0);
@@ -102,7 +86,6 @@ void thrust_kmeans_host(const double* datapoints, double* centroids,
 		thrust::device_vector<int> clusterCounts(K, 0.0);
 		thrust::device_vector<double> clusterSums(K, 0.0);
         double* points_ptr = thrust::raw_pointer_cast(d_datapoints.data());
-        // double* newCentroids_ptr = thrust::raw_pointer_cast(newCentroids.data());
 
         #pragma unroll 4
         for (int d = 0; d < D; ++d)
@@ -155,31 +138,21 @@ void thrust_kmeans_host(const double* datapoints, double* centroids,
         printf("Iteration: %d, changes: %d\n", iter, delta);
     }
 
-    // if (D == 3) 
+    // auto visualizer = VisualizerFactory::create(ComputeType::GPU2, D);
+    // if (visualizer && visualizer->canVisualize(D))
     // {
-    //     float minx, maxx, miny, maxy, minz, maxz;
-    //     compute_bounds(datapoints, N, minx, maxx, miny, maxy, minz, maxz);
-    //     // render(deviceDatapoints, deviceAssignments, N, K, minx, maxx, miny, maxy, minz, maxz);
-    //     render(thrust::raw_pointer_cast(d_datapoints.data()), thrust::raw_pointer_cast(d_assignments.data()), N, K, minx, maxx, miny, maxy, minz, maxz);
+    //     visualizer->visualize(thrust::raw_pointer_cast(d_datapoints.data()), thrust::raw_pointer_cast(d_assignments.data()), N, K, D);
     // }
-    auto visualizer = VisualizerFactory::create(ComputeType::GPU2, D);
-    if (visualizer && visualizer->canVisualize(D))
-    {
-        visualizer->visualize(thrust::raw_pointer_cast(d_datapoints.data()), thrust::raw_pointer_cast(d_assignments.data()), N, K, D);
-    }
 
 	thrust::copy(d_assignments.begin(), d_assignments.end(), assignments);
     thrust::copy(d_centroids.begin(), d_centroids.end(), centroids_col_major);
     col_to_row_major<double>(centroids_col_major, centroids, K, D);    
 
-    // free(datapoints_col_major);
     free(centroids_col_major);
 }
 
-// Type alias to reduce verbosity
 using KMeansFunc = void(const double*, double*, int, int, unsigned char*, TimerManager*);
 
-// Explicit template instantiations for dimensions 1-20
 template KMeansFunc thrust_kmeans_host<1>;
 template KMeansFunc thrust_kmeans_host<2>;
 template KMeansFunc thrust_kmeans_host<3>;

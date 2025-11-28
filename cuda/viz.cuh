@@ -14,9 +14,9 @@
 #define D_VIZ 3
 
 struct Mat4 {
-    float m[16];                                    // 16 elements
-    Mat4() { memset(m, 0, 16 * sizeof(float)); }      // default constructor sets all to 0
-    static Mat4 identity() { Mat4 M; M.m[0] = M.m[5] = M.m[10] = M.m[15] = 1.0f; return M; } // identity matrix
+    float m[16];
+    Mat4() { memset(m, 0, 16 * sizeof(float)); }
+    static Mat4 identity() { Mat4 M; M.m[0] = M.m[5] = M.m[10] = M.m[15] = 1.0f; return M; }
 };
 
 static Mat4 multiply(const Mat4& A, const Mat4& B);
@@ -41,7 +41,4 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
 
 void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
 
-// static void compute_bounds(const std::vector<double>& pts, int N, float& minx, float& maxx, float& miny, float& maxy, float& minz, float& maxz);
-
-// int render(const double* points, const double* d_points, int* d_assignments, int N, int K);
 int render(const double* d_points, const unsigned char* d_assignments, int N, int K, float minx, float maxx, float miny, float maxy, float minz, float maxz);

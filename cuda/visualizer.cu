@@ -17,7 +17,6 @@ void GPUVisualizer::visualize(const double* datapoints, const unsigned char* ass
     float miny = FLT_MAX, maxy = -FLT_MAX;
     float minz = FLT_MAX, maxz = -FLT_MAX;
     
-    // Copy data to host to compute bounds
     double* host_data = new double[N * D];
     cudaMemcpy(host_data, datapoints, N * D * sizeof(double), cudaMemcpyDeviceToHost);
     
@@ -33,7 +32,6 @@ void GPUVisualizer::visualize(const double* datapoints, const unsigned char* ass
     
     delete[] host_data;
     
-    // printf("GPU Visualizer: Rendering %d points in %d clusters\n", N, K);
     render(datapoints, assignments, N, K, minx, maxx, miny, maxy, minz, maxz);
 }
 
@@ -94,7 +92,6 @@ void CPUVisualizer::visualize(const double* datapoints, const unsigned char* ass
     cudaMemcpy(d_datapoints, datapoints, N * D * sizeof(double), cudaMemcpyHostToDevice);
     cudaMemcpy(d_assignments, assignments, N * sizeof(unsigned char), cudaMemcpyHostToDevice);
     
-    // printf("CPU Visualizer: Rendering %d points in %d clusters\n", N, K);
     render(d_datapoints, d_assignments, N, K, minx, maxx, miny, maxy, minz, maxz);
 }
 

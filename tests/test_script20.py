@@ -4,7 +4,7 @@ import struct
 import subprocess
 import os
 
-SEED = 42
+SEED = 2137
 np.random.seed(SEED)
 
 def write_gaussian_stream(filename, N, d, k, spread=0.1, seed=42):
