@@ -5,12 +5,13 @@ template<int D>
 void compute_clusters(const double* datapoints, double *clusters, int N, int K,
     unsigned char* assignments, int *delta)
 {
-    *delta = 0;
+    *delta = 0; // reset change counter
     for (int n = 0; n < N; n++)
     {
         unsigned char nearest_cluster;
         double min_distance = DBL_MAX;
 
+        // for every point we find the nearest cluster based on Euclidean distance
         for(int k=0; k<K; ++k)
         {
             double distance = 0.0;
@@ -29,6 +30,7 @@ void compute_clusters(const double* datapoints, double *clusters, int N, int K,
             }
         }
 
+        // if the assignment has changed, we update it and increment the change counter delta
         if (nearest_cluster != assignments[n])
         {
             assignments[n] = nearest_cluster;
@@ -44,18 +46,22 @@ void scatter_clusters(const double* datapoints, double *centroids, int N, int K,
     {
         unsigned char cluster_id = assignments[n];
         #pragma unroll
+        // accumulate datapoint coordinates to the corresponding centroid
         for (int d = 0; d < D; d++)
         {
             newCentroids[cluster_id * D + d] += datapoints[d * N + n];
         }
+        // increment the count of points assigned to this centroid
         newCentroidsSize[cluster_id]++;
     }
 
+    // update centroids by averaging accumulated coordinates
     for (int k = 0; k < K; k++)
     {
         #pragma unroll
         for (int d = 0; d < D; d++)
         {
+            // if no points assigned to this centroid, it remains unchanged
             if (newCentroidsSize[k] > 0)
                 centroids[k * D + d] = newCentroids[k * D + d] / newCentroidsSize[k];
 
@@ -78,6 +84,7 @@ void seq_kmeans(const double* datapoints, double* centroids, int N, int K, unsig
     memset(newCentroidsSize, 0, K * sizeof(int));
     memset(centroids, 0, K * D * sizeof(double));
     memset(assignments, 0, N * sizeof(unsigned char));
+    // initialize centroids with the first K datapoints!
     for(int k=0; k<K; k++) {
         #pragma unroll
         for(int d=0; d<D; d++) {
@@ -85,6 +92,7 @@ void seq_kmeans(const double* datapoints, double* centroids, int N, int K, unsig
         }
     }
 
+    // main k-means iteration loop, if there are no changes in assignments (delta==0) or max iterations reached, we stop
     for (int iter = 0; iter < MAX_ITERATIONS && delta > 0; ++iter)
     {
         tm->Start();
@@ -99,6 +107,7 @@ void seq_kmeans(const double* datapoints, double* centroids, int N, int K, unsig
 
     }
 
+    // visualization (for 3D data)
     // auto visualizer = VisualizerFactory::create(ComputeType::CPU, D);
     // if (visualizer && visualizer->canVisualize(D))
     // {
@@ -110,8 +119,8 @@ void seq_kmeans(const double* datapoints, double* centroids, int N, int K, unsig
 }
 
 
+// explicit template instantiation for seq_kmeans with D = 1 to 20
 using KMeansFunc = void(const double*, double*, int, int, unsigned char*, TimerManager*);
-
 template KMeansFunc seq_kmeans<1>;
 template KMeansFunc seq_kmeans<2>;
 template KMeansFunc seq_kmeans<3>;

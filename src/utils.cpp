@@ -42,6 +42,7 @@ void load_bin_data(Dataset* dataset, const char* filename)
         ERR("fread header failed.");
     }
 
+    // load datapoints in chunks to avoid large contiguous memory allocation
     int blocks = (dataset->N + 1023) / 1024;
     double *chunkBuffer = (double*)malloc(1024 * dataset->D * sizeof(double));
     if (!chunkBuffer) ERR("malloc chunkBuffer failed.");
@@ -71,6 +72,7 @@ void load_bin_data(Dataset* dataset, const char* filename)
     fclose(file);
 }
 
+// save centroids and assignments to a text file
 void save_output(double** centroids, unsigned char** assignments, Dataset* dataset, char* output_path)
 {
     FILE* file = fopen(output_path, "w");

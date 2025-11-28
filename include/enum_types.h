@@ -1,12 +1,12 @@
 #pragma once
 
 enum class ComputeType {
-    CPU,
-    GPU1,
-    GPU2
+    CPU, // for executing CPU implementation
+    GPU1, // for executing GPU1 implementation
+    GPU2 // for executing GPU2 implementation
 };
 
 enum class DataType {
-    TXT,
-    BIN
+    TXT, // text data format
+    BIN // binary data format
 };

@@ -16,12 +16,13 @@ typedef struct {
     int K;
 } Dataset;
 
-void usage(char* name);
-
+// load dataset from a binary file directly into SoA format using chunked reading
 void load_bin_data(Dataset* dataset, const char* filename);
 
+// load dataset from a text file directly into SoA format
 void load_txt_data(Dataset* dataset, const char* filename);
 
+// save centroids and assignments to a text file
 void save_output(double** centroids, unsigned char** assignments, Dataset* dataset, char* output_path);
 
 void parse_args(int argc, char** argv, DataType *data_format, ComputeType* compute_method, char** data_path, char** output_path);

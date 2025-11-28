@@ -7,6 +7,7 @@
 #include "error_utils.h"
 
 
+// abstract Timer class
 class Timer
 {
 public:
@@ -23,9 +24,10 @@ public:
 		return TotalElapsedMillis() / 1000.0;
 	}
 	virtual inline void Reset() = 0;
-	// virtual inline ~Timer() = default;
+	virtual inline ~Timer() = default;
 };
 
+// Timer implementation for GPU using CUDA events
 class TimerGPU : public Timer
 {
 private:
@@ -73,6 +75,7 @@ public:
 	}
 };
 
+// Timer implementation for CPU using std::chrono
 class TimerCPU : public Timer
 {
 private:
@@ -111,6 +114,7 @@ public:
 	}
 };
 
+// TimerManager to manage different timers
 class TimerManager
 {
 private:
