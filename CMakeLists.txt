@@ -7,11 +7,22 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
-set(CUDAToolkit_ROOT "/opt/cuda")
+if(NOT DEFINED CUDAToolkit_ROOT)
+    # Try common CUDA installation paths
+    if(EXISTS "/usr/local/cuda")
+        set(CUDAToolkit_ROOT "/usr/local/cuda")
+    elseif(EXISTS "/opt/cuda")
+        set(CUDAToolkit_ROOT "/opt/cuda")
+    elseif(EXISTS "/usr/lib/cuda")
+        set(CUDAToolkit_ROOT "/usr/lib/cuda")
+    endif()
+endif()
+
 find_package(CUDAToolkit REQUIRED)
 
 # NVCC flags
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} \
+    --compiler-bindir=/usr/bin/g++-9 \
     --extended-lambda \
     --expt-relaxed-constexpr")
 
@@ -53,11 +64,25 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CUDAToolkit_INCLUDE_DIRS}
 )
 
+# Find GLFW library
+find_library(GLFW_LIBRARY
+    NAMES glfw glfw3
+    PATHS ${EXTERNAL_DIR}/glfw/lib
+    NO_DEFAULT_PATH
+)
+
+# Find GLEW library
+find_library(GLEW_LIBRARY
+    NAMES GLEW
+    PATHS ${EXTERNAL_DIR}/glew/lib
+    NO_DEFAULT_PATH
+)
+
 # Link libraries with full paths from external directory
 target_link_libraries(${PROJECT_NAME} PRIVATE
     OpenGL::GL
-    ${EXTERNAL_DIR}/glfw/lib/libglfw.so.3.3
-    ${EXTERNAL_DIR}/glew/lib/libGLEW.so.2.2.0
+    ${GLFW_LIBRARY}
+    ${GLEW_LIBRARY}
     dl
     pthread
     X11
