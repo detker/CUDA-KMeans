@@ -310,45 +310,6 @@ void kmeans_host(const double* datapoints, double* centroids,
     CUDA_CHECK(cudaMalloc((void**)&deviceDelta, sizeof(unsigned int)));
     CUDA_CHECK(cudaMemset((void*)deviceDelta, 0, sizeof(unsigned int)));
     
-    // int blockSize = 256;  
-    // int sharedMemPerBlock = ((sizeof(unsigned int)*8 + 8 - 1)/8) * 8 + 20 * 20 * sizeof(double);
-    
-    // int numBlocksPerSM;
-    // cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-    //     &numBlocksPerSM,
-    //     compute_clusters<20>,
-    //     blockSize,
-    //     sharedMemPerBlock
-    // );
-    
-    // float occupancy = (numBlocksPerSM * blockSize) / 
-    //                   (float)prop.maxThreadsPerMultiProcessor;
-    
-    // printf("Theoretical Occupancy: %.2f%%\n", occupancy * 100);
-    // printf("Blocks per SM: %d\n", numBlocksPerSM);
-    // printf("Max threads per SM: %d\n", prop.maxThreadsPerMultiProcessor);
-
-
-    // int numThreads = 256;
-    // int sharedMemSizeScatter = sizeof(double) * 20 *  numThreads + sizeof(uint16_t) * numThreads;
-    // int numThreads = 256;
-    // int numBlocks = (N + numThreads - 1) / numThreads;
-    // int sharedMemSizeScatter = ((sizeof(unsigned int) * 20 + 8 - 1) / 8) * 8 + sizeof(double) * 20 * 20;
-
-    // cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-    //     &numBlocksPerSM,
-    //     scatter_clusters<20>,
-    //     numThreads,
-    //     sharedMemSizeScatter
-    // );
-    
-    // occupancy = (numBlocksPerSM * numThreads) / 
-    //                   (float)prop.maxThreadsPerMultiProcessor;
-    
-    // printf("Theoretical Occupancy: %.2f%%\n", occupancy * 100);
-    // printf("Blocks per SM: %d\n", numBlocksPerSM);
-    // printf("Max threads per SM: %d\n", prop.maxThreadsPerMultiProcessor);
-
     // compute_cluster kernel launch parameters
     int threadsPerBlock = 256;
     int blocksPerGrid = (N + threadsPerBlock - 1) / threadsPerBlock;
@@ -358,8 +319,7 @@ void kmeans_host(const double* datapoints, double* centroids,
     int sharedMemSize = (sizeof(unsigned int)*8 + 8 - 1)/8 * 8 + sizeof(double) * K * D;
 
     // scatter_clusters kernel launch parameters
-    int numThreadsScatter = prop.major * 10 + prop.minor >= 60 ? 128 : 256;
-    // int numThreadsScatter = 256;
+    int numThreadsScatter = 128;
     int numBlocksScatter = (N + numThreadsScatter - 1) / numThreadsScatter;
     // shm size for storing K clusters (aligned to double) and their sizes (unsigned int)
     int sharedMemSizeScatter = ((sizeof(unsigned int) * K + 8 - 1) / 8) * 8 + sizeof(double) * K * D;

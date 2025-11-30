@@ -1,5 +1,7 @@
 #include "gpu2.cuh"
 
+// functor to thrust::transform
+// assign points to the nearest centroid and check if assignment changed
 template<int D>
 struct AssignAndCheckChangedFunctor
 {
@@ -73,11 +75,13 @@ void thrust_kmeans_host(const double* datapoints, double* centroids,
         thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(N), zip, f);
         tm->Stop();
 
+        // compute delta
         tm->Start();
         delta = thrust::reduce(d_assignmentChanged.begin(), d_assignmentChanged.end());
         tm->Stop();
 
-        d_oldAssignments = d_assignments;
+        // sort by assignments to prepare for reduction
+        d_oldAssignments = d_assignments; // preserve assignments in order before sort
         tm->Start();
         thrust::sort_by_key(d_assignments.begin(), d_assignments.end(), indices.begin());
         tm->Stop();
@@ -87,10 +91,12 @@ void thrust_kmeans_host(const double* datapoints, double* centroids,
 		thrust::device_vector<double> clusterSums(K, 0.0);
         double* points_ptr = thrust::raw_pointer_cast(d_datapoints.data());
 
+        // for each dimension, compute new centroid values
         #pragma unroll 4
         for (int d = 0; d < D; ++d)
         {
 			thrust::device_vector<double> pointsAlongDim(N);
+            // extract the d-th dimension of all points in sorted order
             tm->Start();
             thrust::transform(indices.begin(), indices.end(), pointsAlongDim.begin(),
                 [=] __device__(int idx) {
@@ -98,6 +104,7 @@ void thrust_kmeans_host(const double* datapoints, double* centroids,
 			});
             tm->Stop();
 
+            // lambda for binary op in reduce_by_key
             auto binary_op = [=] __device__(thrust::tuple<double, int> idx1_tuple, thrust::tuple<double, int> idx2_tuple) {
 				double val1 = thrust::get<0>(idx1_tuple);
 				double val2 = thrust::get<0>(idx2_tuple);
@@ -109,6 +116,7 @@ void thrust_kmeans_host(const double* datapoints, double* centroids,
             auto zipped = thrust::make_zip_iterator(thrust::make_tuple(clusterSums.begin(), clusterCounts.begin()));
             auto zipped_in = thrust::make_zip_iterator(thrust::make_tuple(pointsAlongDim.begin(), ones.begin()));
 
+            // accumulate sums and counts per cluster using reduce_by_key
             tm->Start();
             thrust::reduce_by_key(d_assignments.begin(), d_assignments.end(), zipped_in, clustersIdxs.begin(), zipped, thrust::equal_to<unsigned char>(), binary_op);
             tm->Stop();
@@ -118,6 +126,7 @@ void thrust_kmeans_host(const double* datapoints, double* centroids,
             int* cluster_ids_ptr = thrust::raw_pointer_cast(clustersIdxs.data());
             double* centroids_ptr = thrust::raw_pointer_cast(newCentroids.data());
 
+            // compute new centroid values
             tm->Start();
             thrust::for_each(
                 thrust::counting_iterator<int>(0),
@@ -138,11 +147,11 @@ void thrust_kmeans_host(const double* datapoints, double* centroids,
         printf("Iteration: %d, changes: %d\n", iter, delta);
     }
 
-    // auto visualizer = VisualizerFactory::create(ComputeType::GPU2, D);
-    // if (visualizer && visualizer->canVisualize(D))
-    // {
-    //     visualizer->visualize(thrust::raw_pointer_cast(d_datapoints.data()), thrust::raw_pointer_cast(d_assignments.data()), N, K, D);
-    // }
+    auto visualizer = VisualizerFactory::create(ComputeType::GPU2, D);
+    if (visualizer && visualizer->canVisualize(D))
+    {
+        visualizer->visualize(thrust::raw_pointer_cast(d_datapoints.data()), thrust::raw_pointer_cast(d_assignments.data()), N, K, D);
+    }
 
 	thrust::copy(d_assignments.begin(), d_assignments.end(), assignments);
     thrust::copy(d_centroids.begin(), d_centroids.end(), centroids_col_major);
@@ -151,8 +160,8 @@ void thrust_kmeans_host(const double* datapoints, double* centroids,
     free(centroids_col_major);
 }
 
+// explicit template instantiation with D = 1 to 20
 using KMeansFunc = void(const double*, double*, int, int, unsigned char*, TimerManager*);
-
 template KMeansFunc thrust_kmeans_host<1>;
 template KMeansFunc thrust_kmeans_host<2>;
 template KMeansFunc thrust_kmeans_host<3>;

@@ -21,6 +21,8 @@
 
 #define MAX_ITERATIONS 100
 
+// parallel GPU k-means implementation using thrust (where D is a compile-time constant, D, K <= 20 and N <= 50mln)
+// datapoints are in column-major format (SoA)
 template<int D>
 void thrust_kmeans_host(const double* datapoints, double* centroids,
     int N, int K, unsigned char* assignments, TimerManager *tm);
