@@ -7,9 +7,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
+set(CUDAToolkit_ROOT "/opt/cuda")
+find_package(CUDAToolkit REQUIRED)
+
 # NVCC flags
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} \
-    --compiler-bindir=/usr/bin/g++-9 \
     --extended-lambda \
     --expt-relaxed-constexpr")
 
@@ -48,6 +50,7 @@ find_package(OpenGL REQUIRED)
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${EXTERNAL_DIR}/glfw/include
     ${EXTERNAL_DIR}/glew/include
+    ${CUDAToolkit_INCLUDE_DIRS}
 )
 
 # Link libraries with full paths from external directory
@@ -66,5 +69,5 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 # CUDA separable compilation
 set_target_properties(${PROJECT_NAME} PROPERTIES
     CUDA_SEPARABLE_COMPILATION ON
-    CUDA_ARCHITECTURES "35"
+    CUDA_ARCHITECTURES "61"
 )
