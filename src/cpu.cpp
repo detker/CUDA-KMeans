@@ -108,11 +108,11 @@ void seq_kmeans(const double* datapoints, double* centroids, int N, int K, unsig
     }
 
     // visualization (for 3D data)
-    // auto visualizer = VisualizerFactory::create(ComputeType::CPU, D);
-    // if (visualizer && visualizer->canVisualize(D))
-    // {
-    //     visualizer->visualize(datapoints, assignments, N, K, D);
-    // }
+    auto visualizer = VisualizerFactory::create(ComputeType::CPU, D);
+    if (visualizer && visualizer->canVisualize(D))
+    {
+        visualizer->visualize(datapoints, assignments, N, K, D);
+    }
 
     free(newCentroids);
     free(newCentroidsSize);
