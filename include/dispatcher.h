@@ -8,17 +8,6 @@
 #include "utils.h"
 #include "enum_types.h"
 
-template<int... Dims>
-struct DimSeq {};
-
-template<int N, int... Dims>
-struct MakeDimSeq : MakeDimSeq<N - 1, N - 1, Dims...> {};
-
-template<int... Dims>
-struct MakeDimSeq<0, Dims...> {
-    using type = DimSeq<Dims...>;
-};
-
 template<int D>
 struct KMeansDispatcher 
 {
